@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Hiconics Solarman Credentials",
+        "data": {
+          "username": "Solarman Username",
+          "password": "Solarman Password",
+          "app_secret": "Solarman App Secret",
+          "device_sn": "Inverter Device Serial Number",
+          "device_id": "Inverter Device ID",
+          "app_id": "Solarman App ID",
+          "product": "Product ID",
+          "code_group": "Code Group",
+          "scan_interval": "Polling Interval (Seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to authenticate or connect with Solarman Cloud API."
+    }
+  }
+}
