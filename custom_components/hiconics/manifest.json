@@ -1,0 +1,11 @@
+{
+  "domain": "hiconics",
+  "name": "Hiconics Solarman Integration",
+  "codeowners": ["@abdussalam"],
+  "config_flow": true,
+  "documentation": "https://github.com/abdussalam/hiconics",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/abdussalam/hiconics/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.0.0"
+}
