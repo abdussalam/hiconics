@@ -1,0 +1,83 @@
+set_tou_slot:
+  name: Set TOU Slot Settings
+  description: Sets time-of-use (TOU) schedule slot parameters on the Hiconics inverter.
+  fields:
+    slot:
+      name: Slot Number
+      description: TOU Slot (1 to 6)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 6
+    start_time:
+      name: Start Time
+      description: Start time format HHMM or HH:MM
+      required: true
+      example: "0130"
+      selector:
+        text:
+    end_time:
+      name: End Time
+      description: End time format HHMM or HH:MM
+      required: true
+      example: "0500"
+      selector:
+        text:
+    mode:
+      name: Mode
+      description: "0: Hold/Self-Use, 1: Charge, 2: Discharge"
+      required: true
+      default: 0
+      selector:
+        select:
+          options:
+            - label: "0 - Hold / Self Use"
+              value: "0"
+            - label: "1 - Charge"
+              value: "1"
+            - label: "2 - Discharge"
+              value: "2"
+    max_amps:
+      name: Max Charge Amps
+      description: Maximum permitted charging amps.
+      default: 25
+      selector:
+        number:
+          min: 1
+          max: 100
+    max_soc:
+      name: Max SOC / Target SOC
+      description: Target or Maximum SOC percentage.
+      default: 100
+      selector:
+        number:
+          min: 10
+          max: 100
+    min_soc:
+      name: Min SOC
+      description: Minimum reserve SOC percentage.
+      default: 18
+      selector:
+        number:
+          min: 10
+          max: 100
+
+read_settings:
+  name: Read Inverter Settings
+  description: Sends a request to trigger reading specified setting group registers from the inverter.
+  fields:
+    type:
+      name: Setting Group
+      description: Choose which settings register block to query.
+      required: true
+      selector:
+        select:
+          options:
+            - label: Inverter Mode
+              value: mode
+            - label: Battery Settings
+              value: battery
+            - label: TOU Settings
+              value: tou
