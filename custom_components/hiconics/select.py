@@ -44,6 +44,23 @@ INVERTER_MODE_MAP_TO_TXT = {
     "6": "6 - TOU",
 }
 
+# C76 Peak Usage Options
+PEAK_USAGE_OPTIONS = [
+    "0 - Disable",
+    "1 - Charge: TOU to Self-use",
+    "2 - Discharge: TOU to Self-use",
+    "3 - Charge/Discharge: TOU to Self-use",
+]
+
+PEAK_USAGE_MAP_TO_NUM = {
+    "0 - Disable": "0",
+    "1 - Charge: TOU to Self-use": "1",
+    "2 - Discharge: TOU to Self-use": "2",
+    "3 - Charge/Discharge: TOU to Self-use": "3",
+}
+
+PEAK_USAGE_MAP_TO_TXT = {v: k for k, v in PEAK_USAGE_MAP_TO_NUM.items()}
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Hiconics select entities."""
@@ -51,7 +68,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     api = hass.data[DOMAIN][entry.entry_id]["api"]
 
     entities = [
-        HiconicsInverterModeSelect(coordinator, api, entry)
+        HiconicsInverterModeSelect(coordinator, api, entry),
+        HiconicsPeakUsageSelect(coordinator, api, entry)
     ]
 
     for slot in range(1, 7):
@@ -96,6 +114,43 @@ class HiconicsInverterModeSelect(CoordinatorEntity, SelectEntity):
         _LOGGER.info("Updating Inverter Working Mode (C1) to %s (%s)...", option, num_val)
         await self.api.async_send_command(code="s_A1", operation_type=5, input_param=params)
         self.coordinator.update_extra_data({"C1": num_val})
+
+
+class HiconicsPeakUsageSelect(CoordinatorEntity, SelectEntity):
+    """Interactive select control for Peak Usage TOU Settings (C76)."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_name = "TOU - Peak Usage to Self-Use"
+
+    def __init__(self, coordinator, api, entry):
+        super().__init__(coordinator)
+        self.api = api
+        self.entry = entry
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_sel_C76"
+        self._attr_options = PEAK_USAGE_OPTIONS
+
+    @property
+    def device_info(self):
+        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
+        return {
+            "identifiers": {inverter_id},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    @property
+    def current_option(self) -> str | None:
+        raw = str(self.coordinator.extra_data.get("C76", ""))
+        return PEAK_USAGE_MAP_TO_TXT.get(raw, None)
+
+    async def async_select_option(self, option: str) -> None:
+        num_val = PEAK_USAGE_MAP_TO_NUM.get(option, "0")
+        params = {"C76": {"v": num_val}}
+        _LOGGER.info("Updating C76 Peak Usage Mode to %s (%s)...", option, num_val)
+        await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
+        self.coordinator.update_extra_data({"C76": num_val})
 
 
 class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
