@@ -8,6 +8,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 
@@ -125,21 +126,31 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
+        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
+        
         inverter_device = {
-            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
+            "identifiers": {inverter_id},
             "manufacturer": "Hiconics",
             "model": "HECS2-S6",
             "name": "Hiconics Inverter",
         }
 
         if self._is_battery:
+            # Look up the actual internal registry ID for the parent inverter
+            via_device_id = dr.async_get_device_id_by_identifier(
+                self.hass,
+                inverter_id,
+                config_entry_id=self.entry.entry_id
+            )
+            
             return {
                 "identifiers": {(DOMAIN, f"{self.entry.entry_id}_battery")},
                 "manufacturer": "Hiconics",
                 "model": "LFP Battery",
                 "name": "Hiconics Battery",
-                "via_device": (DOMAIN, f"{self.entry.entry_id}_inverter"),
+                "via_device_id": via_device_id,
             }
+
         return inverter_device
 
     @property
