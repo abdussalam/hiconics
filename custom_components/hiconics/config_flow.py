@@ -63,18 +63,16 @@ class HiconicsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
         )
 
-@staticmethod
+    @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        # Stop passing config_entry into the handler
+        """Get the options flow for this handler."""
+        # Returns the handler without passing config_entry (Home Assistant assigns it automatically now)
         return HiconicsOptionsFlowHandler()
 
 
 class HiconicsOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Hiconics options."""
-
-    # The __init__ method is removed entirely. 
-    # self.config_entry is now natively available from the base class.
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
