@@ -26,17 +26,17 @@ class SolarmanAPIClient:
 
     def __init__(self, session, config):
         self.session = session
-        self.username = config[CONF_USERNAME]
+        self.username = config.get(CONF_USERNAME, "")
         self.password_hash = hashlib.sha256(
-            config[CONF_PASSWORD].encode("utf-8")
+            config.get(CONF_PASSWORD, "").encode("utf-8")
         ).hexdigest()
-        self.app_id = config[CONF_APP_ID]
-        self.app_secret = config[CONF_APP_SECRET]
-        self.device_sn = config[CONF_DEVICE_SN]
-        self.device_id = config[CONF_DEVICE_ID]
+        self.app_id = config.get(CONF_APP_ID, "")
+        self.app_secret = config.get(CONF_APP_SECRET, "")
+        self.device_sn = config.get(CONF_DEVICE_SN, "")
+        self.device_id = config.get(CONF_DEVICE_ID, "")
 
         self._token = None
-        self._token_expires_at = 0
+        self._token_expires_at = 0        
 
     async def async_get_token(self):
         """Retrieve or return cached token."""
