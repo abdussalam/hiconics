@@ -11,19 +11,19 @@ _LOGGER = logging.getLogger(__name__)
 
 # TOU Slot Mode mappings (C42, C48, C54, C60, C66, C72)
 TOU_MODE_OPTIONS = [
-    "0 - Hold / Self Use",
+    "0 - Idle / Self Use",
     "1 - Charge",
     "2 - Discharge",
 ]
 
 TOU_MODE_MAP_TO_NUM = {
-    "0 - Hold / Self Use": "0",
+    "0 - Idle / Self Use": "0",
     "1 - Charge": "1",
     "2 - Discharge": "2",
 }
 
 TOU_MODE_MAP_TO_TXT = {
-    "0": "0 - Hold / Self Use",
+    "0": "0 - Idle / Self Use",
     "1": "1 - Charge",
     "2": "2 - Discharge",
 }
