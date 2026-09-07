@@ -18,8 +18,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = []
     for slot in range(1, 7):
         base_reg = 40 + ((slot - 1) * 6)
-        entities.append(HiconicsTouTimeText(coordinator, api, entry, slot, f"C{base_reg}", "Start Time"))
-        entities.append(HiconicsTouTimeText(coordinator, api, entry, slot, f"C{base_reg+1}", "End Time"))
+        entities.append(HiconicsTouTimeText(coordinator, api, entry, slot, f"C{base_reg}", "A. Start Time"))
+        entities.append(HiconicsTouTimeText(coordinator, api, entry, slot, f"C{base_reg+1}", "B. End Time"))
 
     async_add_entities(entities)
 
@@ -37,7 +37,8 @@ class HiconicsTouTimeText(CoordinatorEntity, TextEntity):
         self.entry = entry
         self._slot = slot
         self._reg_key = reg_key
-        self._attr_name = f"TOU Slot {slot} {name_type}"
+        # Strict alphabetical prefix to group tightly in UI
+        self._attr_name = f"Slot {slot} - {name_type}"
         self._attr_unique_id = f"hiconics_{entry.entry_id}_txt_{reg_key}"
 
     @property
@@ -73,6 +74,5 @@ class HiconicsTouTimeText(CoordinatorEntity, TextEntity):
         current_map[self._reg_key] = clean_val
 
         params = {k: {"v": v} for k, v in current_map.items()}
-        _LOGGER.info("Updating TOU Slot %s time %s to %s...", self._slot, self._reg_key, clean_val)
         await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
         self.coordinator.update_extra_data(current_map)
