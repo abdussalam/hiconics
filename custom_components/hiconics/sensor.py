@@ -74,22 +74,18 @@ def get_state_class(unit: str, key: str, name: str):
 
 
 def get_clean_entity_name(raw_name: str, key: str, is_battery: bool) -> str:
-    """Format a clean entity name without duplicate brand/device prefixes."""
     name = raw_name or key
 
-    if key == "C1":
-        return "Inverter Working Mode"
-
-    # Battery Settings Register mapping (C32 through C39)
+    # Group Battery configuration settings tightly
     battery_settings_map = {
-        "C32": "Battery Control Setting",
-        "C33": "Battery Rated Capacity",
-        "C34": "Battery Max Charge Current",
-        "C35": "Battery Max Discharge Current",
-        "C36": "Battery Max Voltage",
-        "C37": "Battery Min Voltage",
-        "C38": "Battery Max SOC",
-        "C39": "Battery Min SOC",
+        "C32": "Battery Config - Control Setting",
+        "C33": "Battery Config - Rated Capacity",
+        "C34": "Battery Config - Max Charge Current",
+        "C35": "Battery Config - Max Discharge Current",
+        "C36": "Battery Config - Max Voltage",
+        "C37": "Battery Config - Min Voltage",
+        "C38": "Battery Config - Max SOC",
+        "C39": "Battery Config - Min SOC",
     }
     if key in battery_settings_map:
         return battery_settings_map[key]
@@ -110,7 +106,6 @@ def get_clean_entity_name(raw_name: str, key: str, is_battery: bool) -> str:
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Hiconics sensors from entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     known_keys = set()
 
@@ -128,8 +123,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add(key)
             new_entities.append(HiconicsSensor(coordinator, entry, item))
 
-        # 2. Pre-create Battery Settings (C32 to C39) & Inverter Mode (C1)
-        setting_keys = ["C1"] + [f"C{i}" for i in range(32, 40)]
+        # 2. Pre-create Battery Settings (C32 to C39)
+        setting_keys = [f"C{i}" for i in range(32, 40)]
         for key in setting_keys:
             if key not in known_keys:
                 known_keys.add(key)
@@ -140,8 +135,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for key in extra_data:
             if not key or key in known_keys:
                 continue
-            if key.startswith("C") and key[1:].isdigit() and 40 <= int(key[1:]) <= 75:
-                continue  # Skip TOU registers (handled by controls)
+            if key == "C1" or (key.startswith("C") and key[1:].isdigit() and 40 <= int(key[1:]) <= 75):
+                continue  # Skip TOU and Mode registers (handled by controls)
             known_keys.add(key)
             new_entities.append(HiconicsExtraSensor(coordinator, entry, key))
 
