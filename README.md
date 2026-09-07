@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.svg" width="120" height="120" alt="Hiconics Integration Logo">
+</p>
+
 # Hiconics Inverter & Battery Home Assistant Integration
 
 A custom Home Assistant integration for **Hiconics Hybrid Inverters (HECS2-S6)** and **Hiconics LFP Batteries** communicating via the **Solarman Cloud API**. 
