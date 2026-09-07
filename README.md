@@ -108,9 +108,9 @@ You can change your credentials or polling interval at any time:
 | **TOU Slots 1–6** | Start Time | `C40`, `C46`, `C52`, ... | Format `HH:MM` (e.g. `01:30`) |
 | | End Time | `C41`, `C47`, `C53`, ... | Format `HH:MM` (e.g. `05:00`) |
 | | Mode | `C42`, `C48`, `C54`, ... | `0 - Idle / Self Use`, `1 - Charge`, `2 - Discharge` |
-| | Max Charge Amps | `C43`, `C49`, `C55`, ... | `1` to `100` A |
-| | Max Target SOC | `C44`, `C50`, `C56`, ... | `10` to `100` % |
-| | Min Reserve SOC | `C45`, `C51`, `C57`, ... | `10` to `100` % |
+| | Max Charge Amps | `C43`, `C49`, `C55`, ... | `0.0` to `25.0` A |
+| | Max Target SOC | `C44`, `C50`, `C56`, ... | `50` to `100` % |
+| | Min Reserve SOC | `C45`, `C51`, `C57`, ... | `0` to `100` % |
 | **On-Grid Profile**| On-Grid Min Cut-off SOC | `C33` | `0` to `100` % |
 | | On-Grid Max Target SOC | `C34` | `0` to `100` % |
 | | On-Grid Hysteresis | `C35` | `0` to `100` % |
