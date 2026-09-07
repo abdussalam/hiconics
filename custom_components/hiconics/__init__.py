@@ -1,5 +1,6 @@
 """The Hiconics Solarman Component."""
 
+import asyncio
 import json
 import logging
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -47,6 +48,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
+    async def _fetch_and_update_registers(setting_type: str = "tou"):
+        """Helper to send read command and update coordinator extra_data."""
+        code_map = {"mode": "r_A1", "battery": "r_A6", "tou": "r_A8"}
+        code = code_map.get(setting_type, "r_A8")
+        param_key = "C1" if setting_type == "mode" else "C32"
+
+        _LOGGER.info("Fetching '%s' registers from inverter (code %s)...", setting_type, code)
+        res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
+        analysis_raw = res.get("analysisResult")
+        
+        if analysis_raw:
+            try:
+                parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
+                if isinstance(parsed, dict) and parsed:
+                    coordinator.update_extra_data(parsed)
+                    _LOGGER.info("Successfully fetched and updated %s register sensors.", setting_type)
+                    return True
+                else:
+                    _LOGGER.warning("Parsed %s data was empty.", setting_type)
+            except Exception as err:
+                _LOGGER.error("Failed to parse read_settings response: %s", err)
+        else:
+            _LOGGER.warning("No analysisResult returned for %s. Raw response: %s", setting_type, res)
+        return False
+
+    # 1. TOU Control Action (Write + Auto-Refetch)
     async def handle_set_tou_slot(call: ServiceCall):
         slot = call.data.get("slot", 1)
         start_time = call.data.get("start_time", "0000").replace(":", "")
@@ -65,37 +92,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"C{base_reg+4}": {"v": max_soc},
             f"C{base_reg+5}": {"v": min_soc},
         }
+
+        # Send write command
+        _LOGGER.info("Writing TOU slot %s parameters...", slot)
         await api.async_send_command(code="s_A8", operation_type=5, input_param=params)
+
+        # Optimistic local UI update
         flat_params = {k: v["v"] for k, v in params.items()}
         coordinator.update_extra_data(flat_params)
 
+        # Wait 15 seconds (matching Node-RED flow delay) and refetch fresh values from hardware
+        _LOGGER.info("Waiting 15 seconds before refetching TOU settings to verify hardware update...")
+        await asyncio.sleep(15)
+        await _fetch_and_update_registers("tou")
+
+    # 2. Inverter Mode Control Action (Write + Auto-Refetch)
     async def handle_set_inverter_mode(call: ServiceCall):
         mode = str(call.data.get("mode", "1"))
         params = {"C1": {"v": mode}}
+        _LOGGER.info("Writing Inverter mode %s...", mode)
         await api.async_send_command(code="s_A1", operation_type=5, input_param=params)
 
+        _LOGGER.info("Waiting 15 seconds before refetching Inverter mode...")
+        await asyncio.sleep(15)
+        await _fetch_and_update_registers("mode")
+
+    # 3. Read Settings Action
     async def handle_read_settings(call: ServiceCall):
         setting_type = call.data.get("type", "tou")
-        code_map = {"mode": "r_A1", "battery": "r_A6", "tou": "r_A8"}
-        code = code_map.get(setting_type, "r_A8")
-        param_key = "C1" if setting_type == "mode" else "C32"
+        await _fetch_and_update_registers(setting_type)
 
-        res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
-        analysis_raw = res.get("analysisResult")
-        
-        if analysis_raw:
-            try:
-                parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
-                if isinstance(parsed, dict) and parsed:
-                    coordinator.update_extra_data(parsed)
-                    _LOGGER.info("Successfully fetched and updated %s register sensors.", setting_type)
-                else:
-                    _LOGGER.warning("Parsed %s data was empty.", setting_type)
-            except Exception as err:
-                _LOGGER.error("Failed to parse read_settings response: %s", err)
-        else:
-            _LOGGER.warning("No analysisResult returned for %s action. Raw response: %s", setting_type, res)
-
+    # 4. Raw API Send Command Action
     async def handle_send_command(call: ServiceCall):
         code = call.data.get("code")
         op_type = int(call.data.get("operation_type", 5))
