@@ -53,21 +53,21 @@ class HiconicsReadButton(ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         try:
+            _LOGGER.info("Button pressed: Fetching %s settings...", self._read_type)
             res = await self.api.async_send_command(
                 code=self._code,
                 operation_type=4,
                 input_param={self._param_key: {"v": "1"}},
             )
             analysis_raw = res.get("analysisResult")
-            
-            # Catch empty or missing payload safely
+
             if analysis_raw:
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
                 if isinstance(parsed, dict) and parsed:
                     self.coordinator.update_extra_data(parsed)
                     _LOGGER.info("Successfully fetched %s registers.", self._read_type)
                 else:
-                    _LOGGER.warning("Parsed %s data was empty. Inverter may be asleep.", self._read_type)
+                    _LOGGER.warning("Parsed %s data was empty.", self._read_type)
             else:
                 _LOGGER.warning("No analysisResult returned for %s. Raw response: %s", self._read_type, res)
 
