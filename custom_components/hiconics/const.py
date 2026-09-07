@@ -3,7 +3,7 @@
 DOMAIN = "hiconics"
 
 # Defaults
-DEFAULT_SCAN_INTERVAL = 210  # Seconds (3.5 mins matching Node-RED flow)
+DEFAULT_SCAN_INTERVAL = 600  # Updated to 600 seconds (10 mins)
 DEFAULT_APP_ID = "3124071798191830"
 DEFAULT_PRODUCT = "0_1067_1"
 DEFAULT_CODE_GROUP = "G1200"
