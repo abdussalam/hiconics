@@ -76,6 +76,24 @@ def get_state_class(unit: str, key: str, name: str):
 def get_clean_entity_name(raw_name: str, key: str, is_battery: bool) -> str:
     """Format a clean entity name without duplicate brand/device prefixes."""
     name = raw_name or key
+
+    if key == "C1":
+        return "Inverter Working Mode"
+
+    # Battery Settings Register mapping (C32 through C39)
+    battery_settings_map = {
+        "C32": "Battery Control Setting",
+        "C33": "Battery Rated Capacity",
+        "C34": "Battery Max Charge Current",
+        "C35": "Battery Max Discharge Current",
+        "C36": "Battery Max Voltage",
+        "C37": "Battery Min Voltage",
+        "C38": "Battery Max SOC",
+        "C39": "Battery Min SOC",
+    }
+    if key in battery_settings_map:
+        return battery_settings_map[key]
+
     clean = name.strip()
     prefixes = ["hiconics battery ", "hiconics inverter ", "hiconics "]
     for prefix in prefixes:
@@ -102,7 +120,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         data = coordinator.data or {}
         data_list = data.get("dataList", [])
 
-        # Standard telemetry sensors
+        # 1. Standard telemetry sensors
         for item in data_list:
             key = item.get("key")
             if not key or key in known_keys:
@@ -110,13 +128,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add(key)
             new_entities.append(HiconicsSensor(coordinator, entry, item))
 
-        # Dynamic extra registers (excluding TOU C40-C75 which belong to controls)
+        # 2. Pre-create Battery Settings (C32 to C39) & Inverter Mode (C1)
+        setting_keys = ["C1"] + [f"C{i}" for i in range(32, 40)]
+        for key in setting_keys:
+            if key not in known_keys:
+                known_keys.add(key)
+                new_entities.append(HiconicsExtraSensor(coordinator, entry, key))
+
+        # 3. Dynamic extra registers
         extra_data = getattr(coordinator, "extra_data", {})
         for key in extra_data:
             if not key or key in known_keys:
                 continue
             if key.startswith("C") and key[1:].isdigit() and 40 <= int(key[1:]) <= 75:
-                continue  # Skip TOU registers here
+                continue  # Skip TOU registers (handled by controls)
             known_keys.add(key)
             new_entities.append(HiconicsExtraSensor(coordinator, entry, key))
 
@@ -198,6 +223,16 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
         self._is_battery = False
         self._attr_name = get_clean_entity_name(key, key, self._is_battery)
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+        if key in ("C34", "C35"):
+            self._attr_native_unit_of_measurement = "A"
+            self._attr_device_class = SensorDeviceClass.CURRENT
+        elif key in ("C36", "C37"):
+            self._attr_native_unit_of_measurement = "V"
+            self._attr_device_class = SensorDeviceClass.VOLTAGE
+        elif key in ("C38", "C39"):
+            self._attr_native_unit_of_measurement = "%"
+            self._attr_device_class = SensorDeviceClass.BATTERY
 
     @property
     def device_info(self):
