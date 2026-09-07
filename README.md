@@ -38,7 +38,7 @@ Before installing, obtain your Solarman Cloud API credentials:
 1. Open **Home Assistant** and navigate to **HACS** > **Integrations**.
 2. Click the **three vertical dots** in the top-right corner and select **Custom repositories**.
 3. Add your repository URL:
-   * **Repository:** `https://github.com/your-github-username/hiconics`
+   * **Repository:** `https://github.com/abdussalam/hiconics`
    * **Category:** `Integration`
 4. Click **Add**.
 5. Search for **Hiconics Solarman Integration** in HACS and click **Download**.
