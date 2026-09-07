@@ -19,7 +19,6 @@ PLATFORMS = ["sensor", "button"]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hiconics from a config entry."""
     
-    # Merge entry.data and entry.options so UI configuration changes apply
     api_config = dict(entry.data)
     api_config.update(entry.options)
 
@@ -46,10 +45,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    # 1. TOU Control Action
     async def handle_set_tou_slot(call: ServiceCall):
         slot = call.data.get("slot", 1)
         start_time = call.data.get("start_time", "0000").replace(":", "")
@@ -68,19 +65,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"C{base_reg+4}": {"v": max_soc},
             f"C{base_reg+5}": {"v": min_soc},
         }
-
         await api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-
         flat_params = {k: v["v"] for k, v in params.items()}
         coordinator.update_extra_data(flat_params)
 
-    # 2. Inverter Mode Control Action
     async def handle_set_inverter_mode(call: ServiceCall):
         mode = str(call.data.get("mode", "1"))
         params = {"C1": {"v": mode}}
         await api.async_send_command(code="s_A1", operation_type=5, input_param=params)
 
-    # 3. Read Settings Action
     async def handle_read_settings(call: ServiceCall):
         setting_type = call.data.get("type", "tou")
         code_map = {"mode": "r_A1", "battery": "r_A6", "tou": "r_A8"}
@@ -88,24 +81,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         param_key = "C1" if setting_type == "mode" else "C32"
 
         res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
-
         analysis_raw = res.get("analysisResult")
+        
         if analysis_raw:
             try:
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
-                if isinstance(parsed, dict):
+                if isinstance(parsed, dict) and parsed:
                     coordinator.update_extra_data(parsed)
                     _LOGGER.info("Successfully fetched and updated %s register sensors.", setting_type)
+                else:
+                    _LOGGER.warning("Parsed %s data was empty.", setting_type)
             except Exception as err:
                 _LOGGER.error("Failed to parse read_settings response: %s", err)
+        else:
+            _LOGGER.warning("No analysisResult returned for %s action. Raw response: %s", setting_type, res)
 
-    # 4. Raw API Send Command Action
     async def handle_send_command(call: ServiceCall):
         code = call.data.get("code")
         op_type = int(call.data.get("operation_type", 5))
         input_param = call.data.get("input_param", {})
         timeout = int(call.data.get("timeout", 180))
-
         await api.async_send_command(code=code, operation_type=op_type, input_param=input_param, timeout=timeout)
 
     hass.services.async_register(DOMAIN, "set_tou_slot", handle_set_tou_slot)
