@@ -14,7 +14,8 @@ from .const import DOMAIN, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "button", "text", "number", "select", "switch"]
+#PLATFORMS = ["sensor", "button", "text", "number", "select", "switch"]
+PLATFORMS = ["sensor", "number", "select", "switch"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
