@@ -1,4 +1,4 @@
-"""Number platform for Hiconics TOU Amps and SOC limits."""
+"""Number platform for Hiconics TOU Amps, SOC limits, and Battery Settings."""
 
 import logging
 from homeassistant.components.number import NumberEntity
@@ -9,6 +9,15 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+BATTERY_CONFIG_MAP = {
+    "C32": {"name": "On Grid Min SOC", "unit": "%", "min": 0, "max": 100},
+    "C33": {"name": "On Grid Max SOC", "unit": "%", "min": 0, "max": 100},
+    "C34": {"name": "Off Grid Min SOC", "unit": "%", "min": 0, "max": 100},
+    "C35": {"name": "Off Grid Max SOC", "unit": "%", "min": 0, "max": 100},
+    "C36": {"name": "On Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
+    "C37": {"name": "Off Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
+}
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Hiconics number entities."""
@@ -16,18 +25,27 @@ async def async_setup_entry(hass, entry, async_add_entities):
     api = hass.data[DOMAIN][entry.entry_id]["api"]
 
     entities = []
+    
+    # 1. TOU Number Entities
     for slot in range(1, 7):
         base_reg = 40 + ((slot - 1) * 6)
         entities.append(HiconicsTouNumber(coordinator, api, entry, slot, f"C{base_reg+3}", "D. Max Amps", "A", 1, 100))
         entities.append(HiconicsTouNumber(coordinator, api, entry, slot, f"C{base_reg+4}", "E. Max SOC", "%", 10, 100))
         entities.append(HiconicsTouNumber(coordinator, api, entry, slot, f"C{base_reg+5}", "F. Min SOC", "%", 10, 100))
 
+    # 2. Battery Configuration Number Entities
+    for reg_key, config in BATTERY_CONFIG_MAP.items():
+        entities.append(
+            HiconicsBatteryNumber(
+                coordinator, api, entry, reg_key, config["name"], config["unit"], config["min"], config["max"]
+            )
+        )
+
     async_add_entities(entities)
 
 
 class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
     """Interactive number control for TOU Amps and SOC limits."""
-
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
     _attr_native_step = 1
@@ -38,7 +56,6 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
         self.entry = entry
         self._slot = slot
         self._reg_key = reg_key
-        # Strict alphabetical prefix to group tightly in UI
         self._attr_name = f"Slot {slot} - {name_type}"
         self._attr_native_unit_of_measurement = unit
         self._attr_native_min_value = min_v
@@ -81,4 +98,64 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
 
         params = {k: {"v": v} for k, v in current_map.items()}
         await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
+        self.coordinator.update_extra_data(current_map)
+
+
+class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
+    """Interactive number control for Battery Configuration."""
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_step = 1
+
+    def __init__(self, coordinator, api, entry, reg_key: str, name: str, unit: str, min_v: float, max_v: float):
+        super().__init__(coordinator)
+        self.api = api
+        self.entry = entry
+        self._reg_key = reg_key
+        # Grouped under "Battery Config - ..." for clean UI sorting
+        self._attr_name = f"Battery Config - {name}"
+        self._attr_native_unit_of_measurement = unit
+        self._attr_native_min_value = min_v
+        self._attr_native_max_value = max_v
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_bat_num_{reg_key}"
+
+    @property
+    def device_info(self):
+        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
+        return {
+            "identifiers": {inverter_id},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    @property
+    def native_value(self) -> float:
+        val = self.coordinator.extra_data.get(self._reg_key)
+        if val is None:
+            return self._attr_native_min_value
+        try:
+            return float(val)
+        except ValueError:
+            return self._attr_native_min_value
+
+    async def async_set_native_value(self, value: float) -> None:
+        int_val = str(int(value))
+
+        # Reconstruct the entire C32-C37 block to write together
+        current_map = {
+            "C32": self.coordinator.extra_data.get("C32", "10"),
+            "C33": self.coordinator.extra_data.get("C33", "100"),
+            "C34": self.coordinator.extra_data.get("C34", "10"),
+            "C35": self.coordinator.extra_data.get("C35", "100"),
+            "C36": self.coordinator.extra_data.get("C36", "5"),
+            "C37": self.coordinator.extra_data.get("C37", "5"),
+        }
+        current_map[self._reg_key] = int_val
+
+        params = {k: {"v": v} for k, v in current_map.items()}
+        _LOGGER.info("Updating Battery Config %s to %s...", self._reg_key, int_val)
+        
+        # s_A6 is the block code for writing battery registers
+        await self.api.async_send_command(code="s_A6", operation_type=5, input_param=params)
         self.coordinator.update_extra_data(current_map)
