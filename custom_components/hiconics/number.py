@@ -9,14 +9,15 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Corrected Battery Register Mapping
+# Reordered based on the UI mismatch feedback.
+# If these are still misaligned for your firmware, swap the "name" strings below!
 BATTERY_CONFIG_MAP = {
     "C32": {"name": "On Grid Min SOC", "unit": "%", "min": 0, "max": 100},
     "C33": {"name": "On Grid Max SOC", "unit": "%", "min": 0, "max": 100},
-    "C34": {"name": "On Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
-    "C35": {"name": "Off Grid Min SOC", "unit": "%", "min": 0, "max": 100},
-    "C36": {"name": "Off Grid Max SOC", "unit": "%", "min": 0, "max": 100},
-    "C37": {"name": "Off Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
+    "C34": {"name": "Off Grid Max SOC", "unit": "%", "min": 0, "max": 100},
+    "C35": {"name": "Off Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
+    "C36": {"name": "Off Grid Min SOC", "unit": "%", "min": 0, "max": 100},
+    "C37": {"name": "On Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
 }
 
 
@@ -142,13 +143,12 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         int_val = str(int(value))
 
-        # Reconstruct the C32-C37 block with safe default fallbacks
         current_map = {
             "C32": self.coordinator.extra_data.get("C32", "10"),
             "C33": self.coordinator.extra_data.get("C33", "100"),
-            "C34": self.coordinator.extra_data.get("C34", "5"),
-            "C35": self.coordinator.extra_data.get("C35", "10"),
-            "C36": self.coordinator.extra_data.get("C36", "100"),
+            "C34": self.coordinator.extra_data.get("C34", "100"),
+            "C35": self.coordinator.extra_data.get("C35", "5"),
+            "C36": self.coordinator.extra_data.get("C36", "10"),
             "C37": self.coordinator.extra_data.get("C37", "5"),
         }
         current_map[self._reg_key] = int_val
