@@ -14,8 +14,8 @@ from .const import DOMAIN, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "button", "text", "number", "select", "switch"]
-#PLATFORMS = ["sensor", "number", "select", "switch"]
+# Re-added "button" to the load list
+PLATFORMS = ["sensor", "number", "select", "switch", "button"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -56,19 +56,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.info("Fetching '%s' registers from inverter (code %s)...", setting_type, code)
         try:
-            # Send command mirroring the Node-RED payload
             res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
             analysis_raw = res.get("analysisResult")
 
             if analysis_raw:
-                # Mirroring Node-RED: let payload = JSON.parse(msg.payload.analysisResult);
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
                 
                 if isinstance(parsed, dict) and parsed:
-                    # Mirroring Node-RED: let value = payload[key].toString();
                     flat_data = {}
                     for k, v in parsed.items():
-                        # Protect against nested objects just in case PRO API alters the schema
                         if isinstance(v, dict) and "v" in v:
                             flat_data[k] = str(v["v"])
                         else:
@@ -107,7 +103,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         flat_params = {k: v["v"] for k, v in params.items()}
         coordinator.update_extra_data(flat_params)
 
-        _LOGGER.info("Waiting 15s to refetch TOU registers...")
         await asyncio.sleep(15)
         await _fetch_and_update_registers("tou")
 
@@ -116,7 +111,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         params = {"C1": {"v": mode}}
         await api.async_send_command(code="s_A1", operation_type=5, input_param=params)
 
-        _LOGGER.info("Waiting 15s to refetch Inverter Mode registers...")
         await asyncio.sleep(15)
         await _fetch_and_update_registers("mode")
 
