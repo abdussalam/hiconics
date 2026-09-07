@@ -70,7 +70,7 @@ class SolarmanAPIClient:
             return await resp.json()
 
     async def async_send_command(self, code: str, operation_type: int, input_param: dict, timeout: int = 180) -> dict:
-        """Send a control command to the inverter (Operation Type 4 or 5)."""
+        """Send a control command to the inverter and wait for task completion."""
         headers = await self._headers()
         payload = {
             "product": self.product,
@@ -83,22 +83,46 @@ class SolarmanAPIClient:
             "orderTimeout": timeout,
         }
 
+        _LOGGER.debug("Sending Solarman command '%s' (opType %s)...", code, operation_type)
+
         async with self.session.post(URL_COMMAND_SEND, json=payload, headers=headers) as resp:
             res = await resp.json()
             order_id = res.get("id")
             if order_id:
+                _LOGGER.debug("Order submitted successfully (ID: %s). Polling status...", order_id)
                 return await self.async_poll_order_status(order_id)
             return res
 
-    async def async_poll_order_status(self, order_id: str, retries: int = 6, delay: int = 5) -> dict:
-        """Poll task status until completion."""
+    async def async_poll_order_status(self, order_id: str, retries: int = 12, delay: int = 5) -> dict:
+        """Poll order status until analysisResult is returned or task completes."""
         headers = await self._headers()
         url = f"{URL_ORDER_STATUS}/{order_id}"
 
-        for _ in range(retries):
-            await asyncio.sleep(delay)
+        # Initial delay before first check (matching Node-RED 10s delay)
+        await asyncio.sleep(5)
+
+        for attempt in range(1, retries + 1):
             async with self.session.get(url, headers=headers) as resp:
                 data = await resp.json()
-                if data.get("status") in ("SUCCESS", "FAILED"):
+                
+                # Check if analysisResult is available (Read Commands)
+                if data.get("analysisResult"):
+                    _LOGGER.info("Order %s succeeded with analysisResult on attempt %s.", order_id, attempt)
                     return data
+                
+                # Check execution status (Write Commands)
+                status = str(data.get("status", "")).upper()
+                exec_status = str(data.get("executeStatus", "")).upper()
+                if status in ("SUCCESS", "SUCCEEDED", "FINISHED") or exec_status in ("SUCCESS", "1"):
+                    _LOGGER.info("Order %s completed on attempt %s.", order_id, attempt)
+                    return data
+                
+                if status in ("FAILED", "ERROR"):
+                    _LOGGER.warning("Order %s failed on attempt %s: %s", order_id, attempt, data)
+                    return data
+
+            _LOGGER.debug("Order %s pending (attempt %s/%s). Retrying in %ss...", order_id, attempt, retries, delay)
+            await asyncio.sleep(delay)
+
+        _LOGGER.warning("Order %s timed out after %s retries.", order_id, retries)
         return {"status": "TIMEOUT", "id": order_id}
