@@ -123,20 +123,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "read_settings", handle_read_settings)
     hass.services.async_register(DOMAIN, "send_command", handle_send_command)
 
-    # --- NEW: Background Startup Fetch ---
     async def _async_startup_fetch():
         """Fetch all configurations from hardware upon integration boot."""
         _LOGGER.info("Starting background fetch of inverter settings...")
-        await asyncio.sleep(5)  # Allow HA components to settle before polling
+        await asyncio.sleep(5)
         await _fetch_and_update_registers("mode")
-        await asyncio.sleep(3)  # Space out calls to respect API limits
+        await asyncio.sleep(3)
         await _fetch_and_update_registers("battery")
         await asyncio.sleep(3)
         await _fetch_and_update_registers("tou")
         _LOGGER.info("Startup fetch complete. UI is now synchronized.")
 
     hass.async_create_task(_async_startup_fetch())
-    # -------------------------------------
 
     return True
 
