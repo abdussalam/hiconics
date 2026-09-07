@@ -38,7 +38,7 @@ class HiconicsDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict:
         try:
-            res = await self.api.async_get_device_data()
+            res = await self.api.async_get_current_data()
             if res.get("success") in (0, "0"):
                 raise UpdateFailed(f"Solarman API returned error: {res}")
             return res
