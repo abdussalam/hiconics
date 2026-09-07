@@ -67,7 +67,6 @@ class HiconicsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        # Returns the handler without passing config_entry (Home Assistant assigns it automatically now)
         return HiconicsOptionsFlowHandler()
 
 
@@ -79,7 +78,6 @@ class HiconicsOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        # Pull existing config or fallback to original setup data
         schema = vol.Schema({
             vol.Required(
                 CONF_USERNAME, 
