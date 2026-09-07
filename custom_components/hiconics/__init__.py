@@ -4,6 +4,7 @@ import logging
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import device_registry as dr
 
 from .api import SolarmanAPIClient
 from .coordinator import HiconicsDataCoordinator
@@ -29,6 +30,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
     }
 
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}_inverter")},
+        manufacturer="Hiconics",
+        model="HECS2-S6",
+        name="Hiconics Inverter",
+    )    
+    
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register custom service calls for controlling TOU and Modes
