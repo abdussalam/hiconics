@@ -9,23 +9,39 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Mode mappings based directly on Node-RED flow logic
-MODE_OPTIONS = [
+# TOU Slot Mode mappings (C42, C48, C54, C60, C66, C72)
+TOU_MODE_OPTIONS = [
     "0 - Hold / Self Use",
     "1 - Charge",
     "2 - Discharge",
 ]
 
-MODE_MAP_TO_NUM = {
+TOU_MODE_MAP_TO_NUM = {
     "0 - Hold / Self Use": "0",
     "1 - Charge": "1",
     "2 - Discharge": "2",
 }
 
-MODE_MAP_TO_TXT = {
+TOU_MODE_MAP_TO_TXT = {
     "0": "0 - Hold / Self Use",
     "1": "1 - Charge",
     "2": "2 - Discharge",
+}
+
+# Inverter Working Mode mappings (C1)
+INVERTER_MODE_OPTIONS = [
+    "1 - Self Use",
+    "6 - TOU",
+]
+
+INVERTER_MODE_MAP_TO_NUM = {
+    "1 - Self Use": "1",
+    "6 - TOU": "6",
+}
+
+INVERTER_MODE_MAP_TO_TXT = {
+    "1": "1 - Self Use",
+    "6": "6 - TOU",
 }
 
 
@@ -57,7 +73,7 @@ class HiconicsInverterModeSelect(CoordinatorEntity, SelectEntity):
         self.api = api
         self.entry = entry
         self._attr_unique_id = f"hiconics_{entry.entry_id}_sel_C1"
-        self._attr_options = MODE_OPTIONS
+        self._attr_options = INVERTER_MODE_OPTIONS
 
     @property
     def device_info(self):
@@ -70,16 +86,14 @@ class HiconicsInverterModeSelect(CoordinatorEntity, SelectEntity):
         }
 
     @property
-    def current_option(self) -> str:
+    def current_option(self) -> str | None:
         raw = str(self.coordinator.extra_data.get("C1", ""))
-        if not raw:
-            return "0 - Hold / Self Use"
-        # Gracefully return the raw string if it's not in the map instead of "Unknown"
-        return MODE_MAP_TO_TXT.get(raw, raw)
+        return INVERTER_MODE_MAP_TO_TXT.get(raw, None)
 
     async def async_select_option(self, option: str) -> None:
-        num_val = MODE_MAP_TO_NUM.get(option, option)
+        num_val = INVERTER_MODE_MAP_TO_NUM.get(option, "1")
         params = {"C1": {"v": num_val}}
+        _LOGGER.info("Updating Inverter Working Mode (C1) to %s (%s)...", option, num_val)
         await self.api.async_send_command(code="s_A1", operation_type=5, input_param=params)
         self.coordinator.update_extra_data({"C1": num_val})
 
@@ -96,10 +110,9 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
         self.entry = entry
         self._slot = slot
         self._reg_key = reg_key
-        # Strict alphabetical prefix to group tightly in UI
         self._attr_name = f"Slot {slot} - C. Mode"
         self._attr_unique_id = f"hiconics_{entry.entry_id}_sel_{reg_key}"
-        self._attr_options = MODE_OPTIONS
+        self._attr_options = TOU_MODE_OPTIONS
 
     @property
     def device_info(self):
@@ -112,14 +125,12 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
         }
 
     @property
-    def current_option(self) -> str:
+    def current_option(self) -> str | None:
         raw = str(self.coordinator.extra_data.get(self._reg_key, ""))
-        if not raw:
-            return "0 - Hold / Self Use"
-        return MODE_MAP_TO_TXT.get(raw, raw)
+        return TOU_MODE_MAP_TO_TXT.get(raw, None)
 
     async def async_select_option(self, option: str) -> None:
-        num_val = MODE_MAP_TO_NUM.get(option, "0")
+        num_val = TOU_MODE_MAP_TO_NUM.get(option, "0")
         base_reg = 40 + ((self._slot - 1) * 6)
 
         current_map = {
