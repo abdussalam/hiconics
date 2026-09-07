@@ -9,12 +9,13 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Corrected Battery Register Mapping
 BATTERY_CONFIG_MAP = {
     "C32": {"name": "On Grid Min SOC", "unit": "%", "min": 0, "max": 100},
     "C33": {"name": "On Grid Max SOC", "unit": "%", "min": 0, "max": 100},
-    "C34": {"name": "Off Grid Min SOC", "unit": "%", "min": 0, "max": 100},
-    "C35": {"name": "Off Grid Max SOC", "unit": "%", "min": 0, "max": 100},
-    "C36": {"name": "On Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
+    "C34": {"name": "On Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
+    "C35": {"name": "Off Grid Min SOC", "unit": "%", "min": 0, "max": 100},
+    "C36": {"name": "Off Grid Max SOC", "unit": "%", "min": 0, "max": 100},
     "C37": {"name": "Off Grid Hysteresis SOC", "unit": "%", "min": 0, "max": 100},
 }
 
@@ -112,7 +113,6 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
         self.api = api
         self.entry = entry
         self._reg_key = reg_key
-        # Grouped under "Battery Config - ..." for clean UI sorting
         self._attr_name = f"Battery Config - {name}"
         self._attr_native_unit_of_measurement = unit
         self._attr_native_min_value = min_v
@@ -142,13 +142,13 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         int_val = str(int(value))
 
-        # Reconstruct the entire C32-C37 block to write together
+        # Reconstruct the C32-C37 block with safe default fallbacks
         current_map = {
             "C32": self.coordinator.extra_data.get("C32", "10"),
             "C33": self.coordinator.extra_data.get("C33", "100"),
-            "C34": self.coordinator.extra_data.get("C34", "10"),
-            "C35": self.coordinator.extra_data.get("C35", "100"),
-            "C36": self.coordinator.extra_data.get("C36", "5"),
+            "C34": self.coordinator.extra_data.get("C34", "5"),
+            "C35": self.coordinator.extra_data.get("C35", "10"),
+            "C36": self.coordinator.extra_data.get("C36", "100"),
             "C37": self.coordinator.extra_data.get("C37", "5"),
         }
         current_map[self._reg_key] = int_val
@@ -156,6 +156,5 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
         params = {k: {"v": v} for k, v in current_map.items()}
         _LOGGER.info("Updating Battery Config %s to %s...", self._reg_key, int_val)
         
-        # s_A6 is the block code for writing battery registers
         await self.api.async_send_command(code="s_A6", operation_type=5, input_param=params)
         self.coordinator.update_extra_data(current_map)
