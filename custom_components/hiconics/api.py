@@ -18,7 +18,9 @@ _LOGGER = logging.getLogger(__name__)
 
 URL_TOKEN = "https://globalapi.solarmanpv.com/account/v1.0/token"
 URL_DEVICE = "https://globalapi.solarmanpv.com/device/v1.0/currentData"
-URL_COMMAND = "https://globalapi.solarmanpv.com/device/v1.0/command"
+
+URL_COMMAND = "https://globaldc-pro.solarmanpv.com/order-s/order/action/control/send"
+URL_POLL = "https://globaldc-pro.solarmanpv.com/order-s/order/action/"
 
 
 class SolarmanAPIClient:
@@ -86,51 +88,59 @@ class SolarmanAPIClient:
         return await self.async_get_current_data()
 
     async def async_send_command(self, code: str, operation_type: int = 5, input_param: dict = None, timeout: int = 180):
-        """Send command order to device via extendWeb payload."""
+        """Send command order mirroring the Node-RED PRO flow."""
         token = await self.async_get_token()
         headers = {"Authorization": f"Bearer {token}"}
 
+        # extendWeb must be a stringified string, not a dict
+        extend_web_str = json.dumps({"inputParam": input_param or {}})
+
         payload = {
+            "product": "0_1067_1",
             "deviceSn": self.device_sn,
-            "deviceId": int(self.device_id) if str(self.device_id).isdigit() else self.device_id,
-            "cmdCode": code,
+            "deviceId": str(self.device_id),
+            "code": code,
+            "codeGroup": "G1200",
             "operationType": operation_type,
-            "extendWeb": {
-                "inputParam": input_param or {}
-            }
+            "extendWeb": extend_web_str,
+            "orderTimeout": timeout
         }
 
-        _LOGGER.info("Sending command %s to Solarman API...", code)
+        _LOGGER.info("Sending PRO command %s...", code)
         async with self.session.post(URL_COMMAND, headers=headers, json=payload) as resp:
             res_data = await resp.json()
-            if not res_data.get("success"):
-                _LOGGER.error("Failed to issue command %s: %s", code, res_data)
-                raise Exception(f"Command error: {res_data.get('msg')}")
-
-            order_id = res_data.get("orderId")
+            
+            # The PRO api returns 'id' for tracking
+            order_id = res_data.get("id")
             if not order_id:
+                _LOGGER.error("PRO API Command failed or no ID returned: %s", res_data)
                 return res_data
 
             _LOGGER.info("Command accepted. Order ID: %s. Polling result...", order_id)
             return await self._async_poll_order_status(token, order_id, timeout)
 
     async def _async_poll_order_status(self, token: str, order_id: str, timeout: int):
-        """Poll order ID until status indicates completion."""
-        url = "https://globalapi.solarmanpv.com/device/v1.0/command/status"
+        """Poll PRO order ID using a GET request."""
+        url = f"{URL_POLL}{order_id}"
         headers = {"Authorization": f"Bearer {token}"}
-        payload = {"orderId": order_id}
 
         start_time = time.time()
+        
+        # Node-RED flow uses a 10-second delay before checking status
+        await asyncio.sleep(10)
+
         while time.time() - start_time < timeout:
-            async with self.session.post(url, headers=headers, json=payload) as resp:
+            async with self.session.get(url, headers=headers) as resp:
                 res = await resp.json()
-                status = res.get("status")
-                if status == "SUCCESS":
+                
+                # Check for analysisResult which indicates completion
+                if res.get("analysisResult"):
                     _LOGGER.info("Order %s executed successfully.", order_id)
                     return res
-                elif status in ("FAILED", "TIMEOUT"):
-                    _LOGGER.error("Order %s failed with status: %s", order_id, status)
-                    raise Exception(f"Order failed with status {status}")
+                elif str(res.get("success")) == "0":
+                    _LOGGER.error("Order %s failed: %s", order_id, res)
+                    raise Exception(f"Order failed: {res}")
+                    
             await asyncio.sleep(5)
 
-        raise Exception(f"Order polling timed out after {timeout} seconds.")
+        raise Exception(f"Order polling timed out after {timeout} seconds.")    
