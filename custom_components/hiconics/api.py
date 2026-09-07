@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 import time
+import json
 
 from .const import (
     CONF_USERNAME,
