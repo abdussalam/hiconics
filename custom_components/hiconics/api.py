@@ -44,7 +44,9 @@ class SolarmanAPIClient:
             data = await resp.json()
             if data.get("success") in (1, "1") or data.get("access_token"):
                 self.token = data.get("access_token")
+                _LOGGER.info("Successfully obtained new Solarman access token.")
                 return self.token
+            _LOGGER.error("Failed to authenticate with Solarman API: %s", data)
             raise Exception(f"Failed to authenticate with Solarman API: {data}")
 
     async def _headers(self) -> dict:
@@ -83,46 +85,63 @@ class SolarmanAPIClient:
             "orderTimeout": timeout,
         }
 
-        _LOGGER.debug("Sending Solarman command '%s' (opType %s)...", code, operation_type)
+        _LOGGER.info("Sending Solarman command '%s' (Operation Type: %s)...", code, operation_type)
 
         async with self.session.post(URL_COMMAND_SEND, json=payload, headers=headers) as resp:
-            res = await resp.json()
+            if resp.status == 401:
+                _LOGGER.info("Token expired during command send. Refreshing token...")
+                await self.async_get_token()
+                headers = await self._headers()
+                async with self.session.post(URL_COMMAND_SEND, json=payload, headers=headers) as resp_retry:
+                    res = await resp_retry.json()
+            else:
+                res = await resp.json()
+
             order_id = res.get("id")
             if order_id:
-                _LOGGER.debug("Order submitted successfully (ID: %s). Polling status...", order_id)
-                return await self.async_poll_order_status(order_id)
+                _LOGGER.info("Order submitted (ID: %s). Polling status...", order_id)
+                return await self.async_poll_order_status(order_id, is_read=(operation_type == 4))
+            
+            _LOGGER.error("Command send failed or did not return an Order ID. Response: %s", res)
             return res
 
-    async def async_poll_order_status(self, order_id: str, retries: int = 12, delay: int = 5) -> dict:
-        """Poll order status until analysisResult is returned or task completes."""
+    async def async_poll_order_status(self, order_id: str, is_read: bool = False, retries: int = 12, delay: int = 5) -> dict:
+        """Poll order status until analysisResult is populated (for reads) or status completes (for writes)."""
         headers = await self._headers()
         url = f"{URL_ORDER_STATUS}/{order_id}"
 
-        # Initial delay before first check (matching Node-RED 10s delay)
+        # Initial delay before first check
         await asyncio.sleep(5)
 
         for attempt in range(1, retries + 1):
             async with self.session.get(url, headers=headers) as resp:
+                if resp.status == 401:
+                    await self.async_get_token()
+                    headers = await self._headers()
+                    continue
+
                 data = await resp.json()
-                
-                # Check if analysisResult is available (Read Commands)
-                if data.get("analysisResult"):
-                    _LOGGER.info("Order %s succeeded with analysisResult on attempt %s.", order_id, attempt)
-                    return data
-                
-                # Check execution status (Write Commands)
+
+                # For READ commands, strictly require analysisResult before returning
+                if is_read:
+                    if data.get("analysisResult"):
+                        _LOGGER.info("Order %s returned analysisResult on attempt %s.", order_id, attempt)
+                        return data
+                else:
+                    # For WRITE commands, check execution status
+                    status = str(data.get("status", "")).upper()
+                    exec_status = str(data.get("executeStatus", "")).upper()
+                    if status in ("SUCCESS", "SUCCEEDED", "FINISHED") or exec_status in ("SUCCESS", "1"):
+                        _LOGGER.info("Write Order %s completed on attempt %s.", order_id, attempt)
+                        return data
+
                 status = str(data.get("status", "")).upper()
-                exec_status = str(data.get("executeStatus", "")).upper()
-                if status in ("SUCCESS", "SUCCEEDED", "FINISHED") or exec_status in ("SUCCESS", "1"):
-                    _LOGGER.info("Order %s completed on attempt %s.", order_id, attempt)
-                    return data
-                
                 if status in ("FAILED", "ERROR"):
-                    _LOGGER.warning("Order %s failed on attempt %s: %s", order_id, attempt, data)
+                    _LOGGER.error("Order %s failed on attempt %s: %s", order_id, attempt, data)
                     return data
 
-            _LOGGER.debug("Order %s pending (attempt %s/%s). Retrying in %ss...", order_id, attempt, retries, delay)
+            _LOGGER.info("Order %s processing (attempt %s/%s). Waiting %ss...", order_id, attempt, retries, delay)
             await asyncio.sleep(delay)
 
-        _LOGGER.warning("Order %s timed out after %s retries.", order_id, retries)
+        _LOGGER.error("Order %s timed out after %s retries.", order_id, retries)
         return {"status": "TIMEOUT", "id": order_id}
