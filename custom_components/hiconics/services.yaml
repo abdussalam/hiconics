@@ -27,13 +27,13 @@ set_tou_slot:
         text:
     mode:
       name: Mode
-      description: "0: Hold/Self-Use, 1: Charge, 2: Discharge"
+      description: "0: Idle / Self-Use, 1: Charge, 2: Discharge"
       required: true
       default: 0
       selector:
         select:
           options:
-            - label: "0 - Hold / Self Use"
+            - label: "0 - Idle / Self Use"
               value: "0"
             - label: "1 - Charge"
               value: "1"
@@ -70,11 +70,16 @@ set_inverter_mode:
   fields:
     mode:
       name: Inverter Mode
-      description: The numerical mode value (varies based on hardware setup).
+      description: "1: Self Use, 6: TOU"
       required: true
       example: "1"
       selector:
-        text:
+        select:
+          options:
+            - label: "1 - Self Use"
+              value: "1"
+            - label: "6 - TOU"
+              value: "6"
 
 read_settings:
   name: Read Inverter Settings
