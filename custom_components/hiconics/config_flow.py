@@ -63,17 +63,18 @@ class HiconicsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
         )
 
-    @staticmethod
+@staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return HiconicsOptionsFlowHandler(config_entry)
+        # Stop passing config_entry into the handler
+        return HiconicsOptionsFlowHandler()
 
 
 class HiconicsOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Hiconics options."""
 
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
+    # The __init__ method is removed entirely. 
+    # self.config_entry is now natively available from the base class.
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
@@ -82,10 +83,22 @@ class HiconicsOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Pull existing config or fallback to original setup data
         schema = vol.Schema({
-            vol.Required(CONF_USERNAME, default=self.config_entry.options.get(CONF_USERNAME, self.config_entry.data.get(CONF_USERNAME))): str,
-            vol.Required(CONF_PASSWORD, default=self.config_entry.options.get(CONF_PASSWORD, self.config_entry.data.get(CONF_PASSWORD))): str,
-            vol.Required(CONF_APP_SECRET, default=self.config_entry.options.get(CONF_APP_SECRET, self.config_entry.data.get(CONF_APP_SECRET))): str,
-            vol.Required(CONF_SCAN_INTERVAL, default=self.config_entry.options.get(CONF_SCAN_INTERVAL, self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))): int,
+            vol.Required(
+                CONF_USERNAME, 
+                default=self.config_entry.options.get(CONF_USERNAME, self.config_entry.data.get(CONF_USERNAME))
+            ): str,
+            vol.Required(
+                CONF_PASSWORD, 
+                default=self.config_entry.options.get(CONF_PASSWORD, self.config_entry.data.get(CONF_PASSWORD))
+            ): str,
+            vol.Required(
+                CONF_APP_SECRET, 
+                default=self.config_entry.options.get(CONF_APP_SECRET, self.config_entry.data.get(CONF_APP_SECRET))
+            ): str,
+            vol.Required(
+                CONF_SCAN_INTERVAL, 
+                default=self.config_entry.options.get(CONF_SCAN_INTERVAL, self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+            ): int,
         })
         
         return self.async_show_form(step_id="init", data_schema=schema)
