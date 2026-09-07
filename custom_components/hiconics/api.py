@@ -80,6 +80,10 @@ class SolarmanAPIClient:
                 _LOGGER.error("Error fetching telemetry: %s", res_data)
                 return None
 
+    async def async_get_device_data(self):
+        """Alias method for coordinator compatibility."""
+        return await self.async_get_current_data()
+
     async def async_send_command(self, code: str, operation_type: int = 5, input_param: dict = None, timeout: int = 180):
         """Send command order to device via extendWeb payload."""
         token = await self.async_get_token()
@@ -129,7 +133,3 @@ class SolarmanAPIClient:
             await asyncio.sleep(5)
 
         raise Exception(f"Order polling timed out after {timeout} seconds.")
-
-    async def async_get_device_data(self):
-        """Alias for coordinator compatibility."""
-        return await self.async_get_current_data()
