@@ -9,7 +9,6 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Mapped directly from Dashboard Card with updated ranges
 BATTERY_CONFIG_MAP = {
     "C33": {"name": "On-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 50, "step": 1},
     "C34": {"name": "On-Grid Max Target SOC", "unit": "%", "min": 50, "max": 100, "step": 1},
@@ -100,11 +99,7 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
             return self._attr_native_min_value
 
     async def async_set_native_value(self, value: float) -> None:
-        if self._attr_native_step < 1.0:
-            val_str = f"{value:.1f}"
-        else:
-            val_str = str(int(value))
-
+        val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
         base_reg = 40 + ((self._slot - 1) * 6)
 
         current_map = {
@@ -163,10 +158,7 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
             return self._attr_native_min_value
 
     async def async_set_native_value(self, value: float) -> None:
-        if self._attr_native_step < 1.0:
-            val_str = f"{value:.1f}"
-        else:
-            val_str = str(int(value))
+        val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
 
         current_map = {
             "C33": self.coordinator.extra_data.get("C33", "10"),
