@@ -64,6 +64,18 @@ set_tou_slot:
           min: 10
           max: 100
 
+set_inverter_mode:
+  name: Set Inverter General Mode
+  description: Sets the system working mode of the inverter.
+  fields:
+    mode:
+      name: Inverter Mode
+      description: The numerical mode value (varies based on hardware setup).
+      required: true
+      example: "1"
+      selector:
+        text:
+
 read_settings:
   name: Read Inverter Settings
   description: Sends a request to trigger reading specified setting group registers from the inverter.
@@ -81,3 +93,40 @@ read_settings:
               value: battery
             - label: TOU Settings
               value: tou
+
+send_command:
+  name: Send Raw API Command
+  description: Sends an arbitrary control code and raw payload to the Solarman API (Advanced).
+  fields:
+    code:
+      name: Command Code
+      description: E.g., s_A1, s_A8, r_A1
+      required: true
+      example: "s_A8"
+      selector:
+        text:
+    operation_type:
+      name: Operation Type
+      description: Usually 4 for read, 5 for write.
+      required: true
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 10
+    input_param:
+      name: Input Parameter Object
+      description: JSON key-value dictionary to inject into extendWeb.inputParam
+      required: true
+      example: '{"C40": {"v": "0130"}}'
+      selector:
+        object:
+    timeout:
+      name: Order Timeout
+      description: Time to wait for API state completion in seconds.
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 10
+          max: 300
