@@ -63,17 +63,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
                 if isinstance(parsed, dict) and parsed:
                     coordinator.update_extra_data(parsed)
-                    _LOGGER.info("Successfully fetched and updated %s register sensors.", setting_type)
+                    _LOGGER.info("Successfully updated %s register sensors.", setting_type)
                     return True
                 else:
-                    _LOGGER.warning("Parsed %s data was empty.", setting_type)
+                    _LOGGER.error("Parsed %s data was empty.", setting_type)
             except Exception as err:
-                _LOGGER.error("Failed to parse read_settings response: %s", err)
+                _LOGGER.error("Failed to parse read_settings response for %s: %s", setting_type, err)
         else:
-            _LOGGER.warning("No analysisResult returned for %s. Raw response: %s", setting_type, res)
+            _LOGGER.error("No analysisResult returned for %s action. Response: %s", setting_type, res)
         return False
 
-    # 1. TOU Control Action (Write + Auto-Refetch)
+    # 1. TOU Control Action
     async def handle_set_tou_slot(call: ServiceCall):
         slot = call.data.get("slot", 1)
         start_time = call.data.get("start_time", "0000").replace(":", "")
@@ -92,28 +92,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"C{base_reg+4}": {"v": max_soc},
             f"C{base_reg+5}": {"v": min_soc},
         }
-
-        # Send write command
-        _LOGGER.info("Writing TOU slot %s parameters...", slot)
         await api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-
-        # Optimistic local UI update
         flat_params = {k: v["v"] for k, v in params.items()}
         coordinator.update_extra_data(flat_params)
 
-        # Wait 15 seconds (matching Node-RED flow delay) and refetch fresh values from hardware
-        _LOGGER.info("Waiting 15 seconds before refetching TOU settings to verify hardware update...")
+        _LOGGER.info("Waiting 15s to refetch TOU registers...")
         await asyncio.sleep(15)
         await _fetch_and_update_registers("tou")
 
-    # 2. Inverter Mode Control Action (Write + Auto-Refetch)
+    # 2. Inverter Mode Control Action
     async def handle_set_inverter_mode(call: ServiceCall):
         mode = str(call.data.get("mode", "1"))
         params = {"C1": {"v": mode}}
-        _LOGGER.info("Writing Inverter mode %s...", mode)
         await api.async_send_command(code="s_A1", operation_type=5, input_param=params)
 
-        _LOGGER.info("Waiting 15 seconds before refetching Inverter mode...")
+        _LOGGER.info("Waiting 15s to refetch Inverter Mode registers...")
         await asyncio.sleep(15)
         await _fetch_and_update_registers("mode")
 
@@ -122,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         setting_type = call.data.get("type", "tou")
         await _fetch_and_update_registers(setting_type)
 
-    # 4. Raw API Send Command Action
+    # 4. Raw Command Action
     async def handle_send_command(call: ServiceCall):
         code = call.data.get("code")
         op_type = int(call.data.get("operation_type", 5))
