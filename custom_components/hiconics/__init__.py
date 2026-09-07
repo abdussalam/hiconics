@@ -14,7 +14,7 @@ from .const import DOMAIN, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "button"]
+PLATFORMS = ["sensor", "button", "text", "number", "select"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("No analysisResult returned for %s action. Response: %s", setting_type, res)
         return False
 
-    # 1. TOU Control Action
+    # 1. TOU Control Service
     async def handle_set_tou_slot(call: ServiceCall):
         slot = call.data.get("slot", 1)
         start_time = call.data.get("start_time", "0000").replace(":", "")
@@ -100,7 +100,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await asyncio.sleep(15)
         await _fetch_and_update_registers("tou")
 
-    # 2. Inverter Mode Control Action
+    # 2. Inverter Mode Control Service
     async def handle_set_inverter_mode(call: ServiceCall):
         mode = str(call.data.get("mode", "1"))
         params = {"C1": {"v": mode}}
@@ -110,12 +110,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await asyncio.sleep(15)
         await _fetch_and_update_registers("mode")
 
-    # 3. Read Settings Action
+    # 3. Read Settings Service
     async def handle_read_settings(call: ServiceCall):
         setting_type = call.data.get("type", "tou")
         await _fetch_and_update_registers(setting_type)
 
-    # 4. Raw Command Action
+    # 4. Raw Command Service
     async def handle_send_command(call: ServiceCall):
         code = call.data.get("code")
         op_type = int(call.data.get("operation_type", 5))
