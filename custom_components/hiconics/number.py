@@ -9,14 +9,14 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Mapped directly from Dashboard Card
+# Mapped directly from Dashboard Card with updated ranges
 BATTERY_CONFIG_MAP = {
-    "C33": {"name": "On-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
-    "C34": {"name": "On-Grid Max Target SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
-    "C35": {"name": "On-Grid Hysteresis", "unit": "%", "min": 0, "max": 100, "step": 1},
-    "C36": {"name": "Off-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
-    "C37": {"name": "Off-Grid Max Target SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
-    "C38": {"name": "Off-Grid Hysteresis", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C33": {"name": "On-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 50, "step": 1},
+    "C34": {"name": "On-Grid Max Target SOC", "unit": "%", "min": 50, "max": 100, "step": 1},
+    "C35": {"name": "On-Grid Hysteresis", "unit": "%", "min": 0, "max": 30, "step": 1},
+    "C36": {"name": "Off-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 50, "step": 1},
+    "C37": {"name": "Off-Grid Max Target SOC", "unit": "%", "min": 50, "max": 100, "step": 1},
+    "C38": {"name": "Off-Grid Hysteresis", "unit": "%", "min": 0, "max": 30, "step": 1},
     "C217": {"name": "Grid Power Limit", "unit": "W", "min": 0, "max": 15000, "step": 1},
 }
 
