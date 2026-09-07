@@ -116,7 +116,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     def _create_entities():
         new_entities = []
 
-        # 1. Standard polling telemetry
         data = coordinator.data or {}
         data_list = data.get("dataList", [])
 
@@ -127,14 +126,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add(key)
             new_entities.append(HiconicsSensor(coordinator, entry, item))
 
-        # 2. Pre-create TOU Settings (C40 to C75) so they exist immediately
+        # Pre-create TOU Settings (C40 to C75)
         tou_keys = [f"C{i}" for i in range(40, 76)]
         for key in tou_keys:
             if key not in known_keys:
                 known_keys.add(key)
                 new_entities.append(HiconicsExtraSensor(coordinator, entry, key))
 
-        # 3. Any other on-demand extra data
         extra_data = getattr(coordinator, "extra_data", {})
         for key in extra_data:
             if not key or key in known_keys:
@@ -150,7 +148,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class HiconicsSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Hiconics Telemetry Sensor."""
-
     _attr_has_entity_name = True
 
     def __init__(self, coordinator, entry, item):
@@ -159,30 +156,24 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
         self._key = item.get("key")
         raw_name = item.get("name") or self._key
         self._attr_unique_id = f"hiconics_{entry.entry_id}_{self._key}"
-
         self._is_battery = is_battery_sensor(self._key, raw_name)
         self._attr_name = get_clean_entity_name(raw_name, self._key, self._is_battery)
 
         unit = normalize_unit(item.get("unit"))
         if not unit and any(x in raw_name.lower() for x in ["soc", "soh"]):
             unit = "%"
-
         self._attr_native_unit_of_measurement = unit
         if unit:
             self._attr_device_class = get_device_class(unit)
             self._attr_state_class = get_state_class(unit.lower(), self._key, raw_name)
-
         self._attr_entity_category = get_entity_category(self._key, raw_name)
 
     @property
     def device_info(self):
         inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
-
         if self._is_battery:
             via_device_id = dr.async_get_device_id_by_identifier(
-                self.hass,
-                inverter_id,
-                config_entry_id=self.entry.entry_id,
+                self.hass, inverter_id, config_entry_id=self.entry.entry_id
             )
             return {
                 "identifiers": {(DOMAIN, f"{self.entry.entry_id}_battery")},
@@ -191,7 +182,6 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
                 "name": "Hiconics Battery",
                 "via_device_id": via_device_id,
             }
-
         return {
             "identifiers": {inverter_id},
             "manufacturer": "Hiconics",
@@ -203,8 +193,7 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         if not self.coordinator.data:
             return None
-        data_list = self.coordinator.data.get("dataList", [])
-        for item in data_list:
+        for item in self.coordinator.data.get("dataList", []):
             if item.get("key") == self._key:
                 val = item.get("value")
                 if val is None or val == "":
@@ -217,8 +206,7 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
 
 
 class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
-    """Representation of an on-demand pulled Hiconics sensor (e.g. TOU registers)."""
-
+    """Representation of an on-demand pulled Hiconics sensor."""
     _attr_has_entity_name = True
 
     def __init__(self, coordinator, entry, key: str):
@@ -226,10 +214,11 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
         self.entry = entry
         self._key = key
         self._attr_unique_id = f"hiconics_{entry.entry_id}_extra_{key}"
-
         self._is_battery = False
         self._attr_name = get_clean_entity_name(key, key, self._is_battery)
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        
+        # Explicitly setting this to None so it shows up in the main sensor list!
+        self._attr_entity_category = None
 
         if key.startswith("C") and key[1:].isdigit():
             reg_num = int(key[1:])
@@ -259,12 +248,9 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
         val = self.coordinator.extra_data.get(self._key)
         if val is None:
             return None
-
-        # Format TOU mode registers
         if self._key.startswith("C") and self._key[1:].isdigit():
             reg_num = int(self._key[1:])
             if 40 <= reg_num <= 75 and (reg_num - 40) % 6 == 2:
                 mode_map = {"0": "Hold / Self-Use", "1": "Charge", "2": "Discharge"}
                 return mode_map.get(str(val), str(val))
-
         return val
