@@ -111,13 +111,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
         # 2. Dynamic extra registers
         extra_data = getattr(coordinator, "extra_data", {})
         controlled_keys = {"C1", "C32", "C33", "C34", "C35", "C36", "C37", "C38", "C216", "C217"}
-        
+
         for key in extra_data:
             if not key or key in known_keys or key in controlled_keys:
                 continue
             if key.startswith("C") and key[1:].isdigit() and 40 <= int(key[1:]) <= 76:
-                continue  # Exclude TOU controls
-            
+                continue
+
             known_keys.add(key)
             new_entities.append(HiconicsExtraSensor(coordinator, entry, key))
 
