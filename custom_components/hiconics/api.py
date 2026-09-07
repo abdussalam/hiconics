@@ -129,22 +129,6 @@ class SolarmanAPIClient:
             await asyncio.sleep(5)
 
         raise Exception(f"Order polling timed out after {timeout} seconds.")
-    async def async_get_current_data(self):
-        """Fetch live telemetry data."""
-        token = await self.async_get_token()
-        headers = {"Authorization": f"Bearer {token}"}
-        payload = {
-            "deviceSn": self.device_sn,
-            "deviceId": int(self.device_id) if str(self.device_id).isdigit() else self.device_id,
-        }
-
-        async with self.session.post(URL_DEVICE, headers=headers, json=payload) as resp:
-            res_data = await resp.json()
-            if res_data.get("success"):
-                return res_data
-            else:
-                _LOGGER.error("Error fetching telemetry: %s", res_data)
-                return None
 
     async def async_get_device_data(self):
         """Alias for coordinator compatibility."""
