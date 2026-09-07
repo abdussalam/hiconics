@@ -54,11 +54,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         param_key = "C1" if setting_type == "mode" else "C32"
 
         _LOGGER.info("Fetching '%s' registers from inverter (code %s)...", setting_type, code)
-        res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
-        analysis_raw = res.get("analysisResult")
+        try:
+            res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
+            analysis_raw = res.get("analysisResult")
 
-        if analysis_raw:
-            try:
+            if analysis_raw:
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
                 if isinstance(parsed, dict) and parsed:
                     coordinator.update_extra_data(parsed)
@@ -66,10 +66,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     return True
                 else:
                     _LOGGER.error("Parsed %s data was empty.", setting_type)
-            except Exception as err:
-                _LOGGER.error("Failed to parse read_settings response for %s: %s", setting_type, err)
-        else:
-            _LOGGER.error("No analysisResult returned for %s action. Response: %s", setting_type, res)
+            else:
+                _LOGGER.error("No analysisResult returned for %s action. Response: %s", setting_type, res)
+        except Exception as err:
+            _LOGGER.error("Failed to parse read_settings response for %s: %s", setting_type, err)
         return False
 
     async def handle_set_tou_slot(call: ServiceCall):
@@ -122,6 +122,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "set_inverter_mode", handle_set_inverter_mode)
     hass.services.async_register(DOMAIN, "read_settings", handle_read_settings)
     hass.services.async_register(DOMAIN, "send_command", handle_send_command)
+
+    # --- NEW: Background Startup Fetch ---
+    async def _async_startup_fetch():
+        """Fetch all configurations from hardware upon integration boot."""
+        _LOGGER.info("Starting background fetch of inverter settings...")
+        await asyncio.sleep(5)  # Allow HA components to settle before polling
+        await _fetch_and_update_registers("mode")
+        await asyncio.sleep(3)  # Space out calls to respect API limits
+        await _fetch_and_update_registers("battery")
+        await asyncio.sleep(3)
+        await _fetch_and_update_registers("tou")
+        _LOGGER.info("Startup fetch complete. UI is now synchronized.")
+
+    hass.async_create_task(_async_startup_fetch())
+    # -------------------------------------
 
     return True
 
