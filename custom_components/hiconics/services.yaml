@@ -41,27 +41,28 @@ set_tou_slot:
               value: "2"
     max_amps:
       name: Max Charge Amps
-      description: Maximum permitted charging amps.
-      default: 25
+      description: Maximum permitted charging amps (0.0 to 25.0 A).
+      default: 25.0
       selector:
         number:
-          min: 1
-          max: 100
+          min: 0.0
+          max: 25.0
+          step: 0.1
     max_soc:
       name: Max SOC / Target SOC
-      description: Target or Maximum SOC percentage.
+      description: Target or Maximum SOC percentage (50 to 100%).
       default: 100
       selector:
         number:
-          min: 10
+          min: 50
           max: 100
     min_soc:
       name: Min SOC
-      description: Minimum reserve SOC percentage.
+      description: Minimum reserve SOC percentage (0 to 100%).
       default: 18
       selector:
         number:
-          min: 10
+          min: 0
           max: 100
 
 set_inverter_mode:
