@@ -1,5 +1,6 @@
 """The Hiconics Solarman Component."""
 
+import json
 import logging
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
@@ -30,7 +31,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
     }
 
-    # Pre-register the Inverter to ensure its registry ID is available for via_device_id mapping
     device_registry = dr.async_get(hass)
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -42,7 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # 1. TOU Control Service
+    # 1. TOU Control Action
     async def handle_set_tou_slot(call: ServiceCall):
         slot = call.data.get("slot", 1)
         start_time = call.data.get("start_time", "0000").replace(":", "")
@@ -62,35 +62,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"C{base_reg+5}": {"v": min_soc},
         }
 
-        # operationType 5 = write command
         await api.async_send_command(code="s_A8", operation_type=5, input_param=params)
 
-    # 2. Inverter Mode Control Service
+        # Update local extra_data cache so sensors refresh immediately
+        flat_params = {k: v["v"] for k, v in params.items()}
+        coordinator.update_extra_data(flat_params)
+
+    # 2. Inverter Mode Control Action
     async def handle_set_inverter_mode(call: ServiceCall):
-        mode = str(call.data.get("mode", "1")) 
-        
-        # Commonly C1 for Inverter Mode write (s_A1)
-        params = {
-            "C1": {"v": mode}
-        }
+        mode = str(call.data.get("mode", "1"))
+        params = {"C1": {"v": mode}}
         await api.async_send_command(code="s_A1", operation_type=5, input_param=params)
 
-    # 3. Read Settings Service
+    # 3. Read Settings Action (On-Demand Register Fetch)
     async def handle_read_settings(call: ServiceCall):
-        setting_type = call.data.get("type", "mode")
+        setting_type = call.data.get("type", "tou")
         code_map = {"mode": "r_A1", "battery": "r_A6", "tou": "r_A8"}
-        code = code_map.get(setting_type, "r_A1")
+        code = code_map.get(setting_type, "r_A8")
         param_key = "C1" if setting_type == "mode" else "C32"
-        # operationType 4 = read command
-        await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
 
-    # 4. Raw API Send Command (For Debugging / Custom Macros)
+        res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
+
+        analysis_raw = res.get("analysisResult")
+        if analysis_raw:
+            try:
+                parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
+                if isinstance(parsed, dict):
+                    coordinator.update_extra_data(parsed)
+                    _LOGGER.info("Successfully fetched and updated %s register sensors.", setting_type)
+            except Exception as err:
+                _LOGGER.error("Failed to parse read_settings response: %s", err)
+
+    # 4. Raw API Send Command
     async def handle_send_command(call: ServiceCall):
         code = call.data.get("code")
         op_type = int(call.data.get("operation_type", 5))
         input_param = call.data.get("input_param", {})
         timeout = int(call.data.get("timeout", 180))
-        
+
         await api.async_send_command(code=code, operation_type=op_type, input_param=input_param, timeout=timeout)
 
     hass.services.async_register(DOMAIN, "set_tou_slot", handle_set_tou_slot)
