@@ -42,7 +42,6 @@ class HiconicsReadButton(ButtonEntity):
 
     @property
     def device_info(self):
-        """Link to the Inverter device."""
         inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
             "identifiers": {inverter_id},
@@ -60,10 +59,17 @@ class HiconicsReadButton(ButtonEntity):
                 input_param={self._param_key: {"v": "1"}},
             )
             analysis_raw = res.get("analysisResult")
+            
+            # Catch empty or missing payload safely
             if analysis_raw:
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
-                if isinstance(parsed, dict):
+                if isinstance(parsed, dict) and parsed:
                     self.coordinator.update_extra_data(parsed)
                     _LOGGER.info("Successfully fetched %s registers.", self._read_type)
+                else:
+                    _LOGGER.warning("Parsed %s data was empty. Inverter may be asleep.", self._read_type)
+            else:
+                _LOGGER.warning("No analysisResult returned for %s. Raw response: %s", self._read_type, res)
+
         except Exception as err:
             _LOGGER.error("Failed to read settings %s: %s", self._read_type, err)
