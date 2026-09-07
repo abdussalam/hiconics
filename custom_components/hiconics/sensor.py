@@ -119,7 +119,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 continue
             if key.startswith("C") and key[1:].isdigit():
                 reg_num = int(key[1:])
-                if (32 <= reg_num <= 37) or (40 <= reg_num <= 75):
+                if (32 <= reg_num <= 37) or (40 <= reg_num <= 76):
                     continue
             
             known_keys.add(key)
