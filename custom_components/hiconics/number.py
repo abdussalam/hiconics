@@ -11,13 +11,13 @@ _LOGGER = logging.getLogger(__name__)
 
 # Mapped directly from Dashboard Card
 BATTERY_CONFIG_MAP = {
-    "C33": {"name": "On-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 100},
-    "C34": {"name": "On-Grid Max Target SOC", "unit": "%", "min": 0, "max": 100},
-    "C35": {"name": "On-Grid Hysteresis", "unit": "%", "min": 0, "max": 100},
-    "C36": {"name": "Off-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 100},
-    "C37": {"name": "Off-Grid Max Target SOC", "unit": "%", "min": 0, "max": 100},
-    "C38": {"name": "Off-Grid Hysteresis", "unit": "%", "min": 0, "max": 100},
-    "C217": {"name": "Grid Power Limit", "unit": "W", "min": 0, "max": 15000},
+    "C33": {"name": "On-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C34": {"name": "On-Grid Max Target SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C35": {"name": "On-Grid Hysteresis", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C36": {"name": "Off-Grid Min Cut-off SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C37": {"name": "Off-Grid Max Target SOC", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C38": {"name": "Off-Grid Hysteresis", "unit": "%", "min": 0, "max": 100, "step": 1},
+    "C217": {"name": "Grid Power Limit", "unit": "W", "min": 0, "max": 15000, "step": 1},
 }
 
 
@@ -31,15 +31,27 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # 1. TOU Number Entities
     for slot in range(1, 7):
         base_reg = 40 + ((slot - 1) * 6)
-        entities.append(HiconicsTouNumber(coordinator, api, entry, slot, f"C{base_reg+3}", "D. Max Amps", "A", 1, 100))
-        entities.append(HiconicsTouNumber(coordinator, api, entry, slot, f"C{base_reg+4}", "E. Max SOC", "%", 10, 100))
-        entities.append(HiconicsTouNumber(coordinator, api, entry, slot, f"C{base_reg+5}", "F. Min SOC", "%", 10, 100))
+        entities.append(
+            HiconicsTouNumber(
+                coordinator, api, entry, slot, f"C{base_reg+3}", "D. Max Amps", "A", 0.0, 25.0, step=0.1
+            )
+        )
+        entities.append(
+            HiconicsTouNumber(
+                coordinator, api, entry, slot, f"C{base_reg+4}", "E. Max SOC", "%", 50.0, 100.0, step=1.0
+            )
+        )
+        entities.append(
+            HiconicsTouNumber(
+                coordinator, api, entry, slot, f"C{base_reg+5}", "F. Min SOC", "%", 0.0, 100.0, step=1.0
+            )
+        )
 
     # 2. Battery & System Configuration Number Entities
     for reg_key, config in BATTERY_CONFIG_MAP.items():
         entities.append(
             HiconicsBatteryNumber(
-                coordinator, api, entry, reg_key, config["name"], config["unit"], config["min"], config["max"]
+                coordinator, api, entry, reg_key, config["name"], config["unit"], config["min"], config["max"], step=config.get("step", 1.0)
             )
         )
 
@@ -51,9 +63,10 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_step = 1
 
-    def __init__(self, coordinator, api, entry, slot: int, reg_key: str, name_type: str, unit: str, min_v: float, max_v: float):
+    def __init__(
+        self, coordinator, api, entry, slot: int, reg_key: str, name_type: str, unit: str, min_v: float, max_v: float, step: float = 1.0
+    ):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
@@ -63,6 +76,7 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_native_min_value = min_v
         self._attr_native_max_value = max_v
+        self._attr_native_step = step
         self._attr_unique_id = f"hiconics_{entry.entry_id}_num_{reg_key}"
 
     @property
@@ -86,18 +100,22 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
             return self._attr_native_min_value
 
     async def async_set_native_value(self, value: float) -> None:
-        int_val = str(int(value))
+        if self._attr_native_step < 1.0:
+            val_str = f"{value:.1f}"
+        else:
+            val_str = str(int(value))
+
         base_reg = 40 + ((self._slot - 1) * 6)
 
         current_map = {
             f"C{base_reg}": self.coordinator.extra_data.get(f"C{base_reg}", "0000"),
             f"C{base_reg+1}": self.coordinator.extra_data.get(f"C{base_reg+1}", "0000"),
             f"C{base_reg+2}": self.coordinator.extra_data.get(f"C{base_reg+2}", "0"),
-            f"C{base_reg+3}": self.coordinator.extra_data.get(f"C{base_reg+3}", "25"),
+            f"C{base_reg+3}": self.coordinator.extra_data.get(f"C{base_reg+3}", "25.0"),
             f"C{base_reg+4}": self.coordinator.extra_data.get(f"C{base_reg+4}", "100"),
             f"C{base_reg+5}": self.coordinator.extra_data.get(f"C{base_reg+5}", "18"),
         }
-        current_map[self._reg_key] = int_val
+        current_map[self._reg_key] = val_str
 
         params = {k: {"v": v} for k, v in current_map.items()}
         await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
@@ -109,9 +127,10 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_step = 1
 
-    def __init__(self, coordinator, api, entry, reg_key: str, name: str, unit: str, min_v: float, max_v: float):
+    def __init__(
+        self, coordinator, api, entry, reg_key: str, name: str, unit: str, min_v: float, max_v: float, step: float = 1.0
+    ):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
@@ -120,6 +139,7 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_native_min_value = min_v
         self._attr_native_max_value = max_v
+        self._attr_native_step = step
         self._attr_unique_id = f"hiconics_{entry.entry_id}_bat_num_{reg_key}"
 
     @property
@@ -143,7 +163,10 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
             return self._attr_native_min_value
 
     async def async_set_native_value(self, value: float) -> None:
-        int_val = str(int(value))
+        if self._attr_native_step < 1.0:
+            val_str = f"{value:.1f}"
+        else:
+            val_str = str(int(value))
 
         current_map = {
             "C33": self.coordinator.extra_data.get("C33", "10"),
@@ -153,10 +176,10 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
             "C37": self.coordinator.extra_data.get("C37", "100"),
             "C38": self.coordinator.extra_data.get("C38", "5"),
         }
-        current_map[self._reg_key] = int_val
+        current_map[self._reg_key] = val_str
 
         params = {k: {"v": v} for k, v in current_map.items()}
-        _LOGGER.info("Updating Config %s to %s...", self._reg_key, int_val)
+        _LOGGER.info("Updating Config %s to %s...", self._reg_key, val_str)
 
         await self.api.async_send_command(code="s_A6", operation_type=5, input_param=params)
         self.coordinator.update_extra_data(current_map)
