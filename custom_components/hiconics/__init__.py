@@ -56,19 +56,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.info("Fetching '%s' registers from inverter (code %s)...", setting_type, code)
         try:
+            # Send command mirroring the Node-RED payload
             res = await api.async_send_command(code=code, operation_type=4, input_param={param_key: {"v": "1"}})
             analysis_raw = res.get("analysisResult")
 
             if analysis_raw:
+                # Mirroring Node-RED: let payload = JSON.parse(msg.payload.analysisResult);
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
+                
                 if isinstance(parsed, dict) and parsed:
-                    coordinator.update_extra_data(parsed)
+                    # Mirroring Node-RED: let value = payload[key].toString();
+                    flat_data = {}
+                    for k, v in parsed.items():
+                        # Protect against nested objects just in case PRO API alters the schema
+                        if isinstance(v, dict) and "v" in v:
+                            flat_data[k] = str(v["v"])
+                        else:
+                            flat_data[k] = str(v)
+                            
+                    coordinator.update_extra_data(flat_data)
                     _LOGGER.info("Successfully updated %s register sensors.", setting_type)
                     return True
                 else:
-                    _LOGGER.error("Parsed %s data was empty.", setting_type)
+                    _LOGGER.error("Parsed %s data was empty or not a dict.", setting_type)
             else:
-                _LOGGER.error("No analysisResult returned for %s action. Response: %s", setting_type, res)
+                _LOGGER.error("No analysisResult returned for %s. Response: %s", setting_type, res)
         except Exception as err:
             _LOGGER.error("Failed to parse read_settings response for %s: %s", setting_type, err)
         return False
