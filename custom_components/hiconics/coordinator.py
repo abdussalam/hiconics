@@ -25,6 +25,7 @@ class HiconicsDataCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch live telemetry from Solarman API."""
         try:
+            # Make sure this line calls async_get_current_data(), NOT async_get_device_data()
             data = await self.api.async_get_current_data()
             if not data:
                 raise UpdateFailed("Failed to retrieve valid response from Solarman API.")
