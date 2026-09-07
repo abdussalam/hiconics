@@ -60,7 +60,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             analysis_raw = res.get("analysisResult")
 
             if analysis_raw:
-                import json
                 parsed = json.loads(analysis_raw) if isinstance(analysis_raw, str) else analysis_raw
                 
                 if isinstance(parsed, dict) and parsed:
