@@ -111,12 +111,12 @@ You can change your credentials or polling interval at any time:
 | | Max Charge Amps | `C43`, `C49`, `C55`, ... | `0.0` to `25.0` A |
 | | Max Target SOC | `C44`, `C50`, `C56`, ... | `50` to `100` % |
 | | Min Reserve SOC | `C45`, `C51`, `C57`, ... | `0` to `100` % |
-| **On-Grid Profile**| On-Grid Min Cut-off SOC | `C33` | `0` to `100` % |
-| | On-Grid Max Target SOC | `C34` | `0` to `100` % |
-| | On-Grid Hysteresis | `C35` | `0` to `100` % |
-| **Off-Grid Profile**| Off-Grid Min Cut-off SOC | `C36` | `0` to `100` % |
-| | Off-Grid Max Target SOC | `C37` | `0` to `100` % |
-| | Off-Grid Hysteresis | `C38` | `0` to `100` % |
+| **On-Grid Profile**| On-Grid Min Cut-off SOC | `C33` | `0` to `50` % |
+| | On-Grid Max Target SOC | `C34` | `50` to `100` % |
+| | On-Grid Hysteresis | `C35` | `0` to `30` % |
+| **Off-Grid Profile**| Off-Grid Min Cut-off SOC | `C36` | `0` to `50` % |
+| | Off-Grid Max Target SOC | `C37` | `50` to `100` % |
+| | Off-Grid Hysteresis | `C38` | `0` to `30` % |
 | **System Controls**| Battery Sleep Mode | `C32` | `ON` (1) / `OFF` (0) |
 | | Grid Charging | `C216` | `ON` (1) / `OFF` (0) |
 | | Grid Power Limit | `C217` | `0` to `15000` W |
