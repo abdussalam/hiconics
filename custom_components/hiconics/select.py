@@ -9,7 +9,6 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TOU Slot Mode mappings (C42, C48, C54, C60, C66, C72)
 TOU_MODE_OPTIONS = [
     "0 - Idle / Self Use",
     "1 - Charge",
@@ -28,7 +27,6 @@ TOU_MODE_MAP_TO_TXT = {
     "2": "2 - Discharge",
 }
 
-# Inverter Working Mode mappings (C1)
 INVERTER_MODE_OPTIONS = [
     "1 - Self Use",
     "6 - TOU",
@@ -44,7 +42,6 @@ INVERTER_MODE_MAP_TO_TXT = {
     "6": "6 - TOU",
 }
 
-# C76 Peak Usage Options
 PEAK_USAGE_OPTIONS = [
     "0 - Disable",
     "1 - Charge: TOU to Self-use",
