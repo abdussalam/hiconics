@@ -28,6 +28,9 @@ class SolarmanAPIClient:
         self.session = session
         self.username = config.get(CONF_USERNAME, "")
         self.password = config.get(CONF_PASSWORD, "")
+        self.password_hash = hashlib.sha256(
+            config.get(CONF_PASSWORD, "").encode("utf-8")
+        ).hexdigest()        
         self.app_id = config.get(CONF_APP_ID, "")
         self.app_secret = config.get(CONF_APP_SECRET, "")
         self.device_sn = config.get(CONF_DEVICE_SN, "")
@@ -46,7 +49,7 @@ class SolarmanAPIClient:
         payload = {
             "appSecret": self.app_secret,
             "email": self.username,
-            "password": self.password,
+            "password": self.password_hash,
         }
 
         _LOGGER.debug("Requesting Solarman access token...")
