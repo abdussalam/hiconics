@@ -94,7 +94,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     known_keys = set()
 
-    def   ():
+    def _create_entities():
         new_entities = []
 
         data = coordinator.data or {}
@@ -108,15 +108,21 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add(key)
             new_entities.append(HiconicsSensor(coordinator, entry, item))
 
-        # 2. Dynamic extra registers
+        # 2. TOU Slot Time Sensors (Slots 1 to 6)
+        for slot in range(1, 7):
+            start_key = f"tou_slot_{slot}_start"
+            if start_key not in known_keys:
+                known_keys.add(start_key)
+                new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=True))
+            end_key = f"tou_slot_{slot}_end"
+            if end_key not in known_keys:
+                known_keys.add(end_key)
+                new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=False))
+
+        # 3. Dynamic extra registers
         extra_data = getattr(coordinator, "extra_data", {})
         controlled_keys = {"C1", "C32", "C33", "C34", "C35", "C36", "C37", "C38", "C216", "C217"}
 
-    # Create Start and End time sensors for all 6 TOU slots
-        for slot in range(1, 7):
-            new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=True))
-            new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=False))
-             
         for key in extra_data:
             if not key or key in known_keys or key in controlled_keys:
                 continue
@@ -219,12 +225,11 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        return self.coordinator.extra_data.get(self._key)
+        extra = getattr(self.coordinator, "extra_data", {})
+        return extra.get(self._key)
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import EntityCategory
 
-class HiconicsTOUTimeSensor(SensorEntity):
+class HiconicsTOUTimeSensor(CoordinatorEntity, SensorEntity):
     """Read-only sensor for TOU Start and End Times."""
 
     _attr_has_entity_name = True
@@ -232,10 +237,10 @@ class HiconicsTOUTimeSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator, entry, slot: int, is_start: bool):
-        self.coordinator = coordinator
+        super().__init__(coordinator)
         self.entry = entry
         self._slot = slot
-        
+
         # Slot 1 starts at C40, Slot 2 at C46, etc.
         base_reg = 40 + ((slot - 1) * 6)
         self._reg = f"C{base_reg}" if is_start else f"C{base_reg + 1}"
@@ -255,10 +260,10 @@ class HiconicsTOUTimeSensor(SensorEntity):
 
     @property
     def native_value(self):
-        """Fetch the value from the coordinator and format it as HH:MM."""
-        raw_time = self.coordinator.data.get(self._reg)
+        """Fetch the value from coordinator.extra_data and format as HH:MM."""
+        extra_data = getattr(self.coordinator, "extra_data", {})
+        raw_time = extra_data.get(self._reg)
         if raw_time and str(raw_time) != "None":
-            # Pad to 4 digits just in case (e.g., "830" -> "0830")
             val = str(raw_time).zfill(4)
             if len(val) == 4:
                 return f"{val[:2]}:{val[2:]}"
