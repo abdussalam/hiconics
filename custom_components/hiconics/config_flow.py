@@ -15,6 +15,12 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    CONF_API_DOMAIN,
+    CONF_PRODUCT_CODE,
+    CONF_CODE_GROUP,
+    DEFAULT_API_DOMAIN,
+    DEFAULT_PRODUCT_CODE,
+    DEFAULT_CODE_GROUP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,6 +33,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_APP_SECRET): str,
         vol.Required(CONF_DEVICE_SN): str,
         vol.Required(CONF_DEVICE_ID): str,
+        vol.Optional(CONF_API_DOMAIN, default=DEFAULT_API_DOMAIN): str,
+        vol.Optional(CONF_PRODUCT_CODE, default=DEFAULT_PRODUCT_CODE): str,
+        vol.Optional(CONF_CODE_GROUP, default=DEFAULT_CODE_GROUP): str,
         vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
     }
 )
@@ -83,10 +92,10 @@ class HiconicsOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_APP_SECRET, default=current.get(CONF_APP_SECRET, "")): str,
                 vol.Required(CONF_DEVICE_SN, default=current.get(CONF_DEVICE_SN, "")): str,
                 vol.Required(CONF_DEVICE_ID, default=current.get(CONF_DEVICE_ID, "")): str,
-                vol.Optional(
-                    CONF_SCAN_INTERVAL,
-                    default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                ): int,
+                vol.Optional(CONF_API_DOMAIN, default=current.get(CONF_API_DOMAIN, DEFAULT_API_DOMAIN)): str,
+                vol.Optional(CONF_PRODUCT_CODE, default=current.get(CONF_PRODUCT_CODE, DEFAULT_PRODUCT_CODE)): str,
+                vol.Optional(CONF_CODE_GROUP, default=current.get(CONF_CODE_GROUP, DEFAULT_CODE_GROUP)): str,
+                vol.Optional(CONF_SCAN_INTERVAL, default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
             }
         )
 
