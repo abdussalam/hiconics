@@ -250,6 +250,11 @@ class HiconicsTOUTimeSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"hiconics_{entry.entry_id}_tou_{slot}_{time_type.lower()}"
 
     @property
+    def available(self) -> bool:
+        """Always show as available since these rely on manual pulling."""
+        return True    
+    
+    @property
     def device_info(self):
         return {
             "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
