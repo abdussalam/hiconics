@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/github/license/abdussalam/hiconics)](LICENSE)
 [![HACS Validation](https://github.com/abdussalam/hiconics/actions/workflows/validate.yml/badge.svg)](https://github.com/abdussalam/hiconics/actions)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-%23db61a2.svg?&logo=github)](https://github.com/sponsors/abdussalam)
 
 A custom Home Assistant integration for **Hiconics Hybrid Inverters (HECS2-S6)** and **Hiconics LFP Batteries** communicating via the **Solarman Cloud API**. 
 
