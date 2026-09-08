@@ -94,7 +94,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     known_keys = set()
 
-    def _create_entities():
+    def   ():
         new_entities = []
 
         data = coordinator.data or {}
@@ -112,6 +112,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
         extra_data = getattr(coordinator, "extra_data", {})
         controlled_keys = {"C1", "C32", "C33", "C34", "C35", "C36", "C37", "C38", "C216", "C217"}
 
+    # Create Start and End time sensors for all 6 TOU slots
+        for slot in range(1, 7):
+            new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=True))
+            new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=False))
+             
         for key in extra_data:
             if not key or key in known_keys or key in controlled_keys:
                 continue
@@ -215,3 +220,47 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.extra_data.get(self._key)
+
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import EntityCategory
+
+class HiconicsTOUTimeSensor(SensorEntity):
+    """Read-only sensor for TOU Start and End Times."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:clock-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry, slot: int, is_start: bool):
+        self.coordinator = coordinator
+        self.entry = entry
+        self._slot = slot
+        
+        # Slot 1 starts at C40, Slot 2 at C46, etc.
+        base_reg = 40 + ((slot - 1) * 6)
+        self._reg = f"C{base_reg}" if is_start else f"C{base_reg + 1}"
+
+        time_type = "Start" if is_start else "End"
+        self._attr_name = f"TOU Slot {slot} {time_type} Time"
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_tou_{slot}_{time_type.lower()}"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    @property
+    def native_value(self):
+        """Fetch the value from the coordinator and format it as HH:MM."""
+        raw_time = self.coordinator.data.get(self._reg)
+        if raw_time and str(raw_time) != "None":
+            # Pad to 4 digits just in case (e.g., "830" -> "0830")
+            val = str(raw_time).zfill(4)
+            if len(val) == 4:
+                return f"{val[:2]}:{val[2:]}"
+            return val
+        return "00:00"
