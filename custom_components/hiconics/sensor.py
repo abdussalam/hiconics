@@ -234,7 +234,7 @@ class HiconicsTOUTimeSensor(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:clock-outline"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry, slot: int, is_start: bool):
         super().__init__(coordinator)
