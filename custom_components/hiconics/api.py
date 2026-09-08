@@ -13,6 +13,12 @@ from .const import (
     CONF_APP_SECRET,
     CONF_DEVICE_SN,
     CONF_DEVICE_ID,
+    CONF_API_DOMAIN,
+    CONF_PRODUCT_CODE,
+    CONF_CODE_GROUP,
+    DEFAULT_API_DOMAIN,
+    DEFAULT_PRODUCT_CODE,
+    DEFAULT_CODE_GROUP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,17 +36,21 @@ class SolarmanAPIClient:
     def __init__(self, session, config):
         self.session = session
         self.username = config.get(CONF_USERNAME, "")
-        self.password = config.get(CONF_PASSWORD, "")
         self.password_hash = hashlib.sha256(
             config.get(CONF_PASSWORD, "").encode("utf-8")
-        ).hexdigest()        
+        ).hexdigest()
         self.app_id = config.get(CONF_APP_ID, "")
         self.app_secret = config.get(CONF_APP_SECRET, "")
         self.device_sn = config.get(CONF_DEVICE_SN, "")
         self.device_id = config.get(CONF_DEVICE_ID, "")
+        
+        # New configurable parameters
+        self.api_domain = config.get(CONF_API_DOMAIN, DEFAULT_API_DOMAIN)
+        self.product_code = config.get(CONF_PRODUCT_CODE, DEFAULT_PRODUCT_CODE)
+        self.code_group = config.get(CONF_CODE_GROUP, DEFAULT_CODE_GROUP)
 
         self._token = None
-        self._token_expires_at = 0        
+        self._token_expires_at = 0  
 
     async def async_get_token(self):
         """Retrieve or return cached token."""
@@ -92,26 +102,27 @@ class SolarmanAPIClient:
         """Send command order mirroring the Node-RED PRO flow."""
         token = await self.async_get_token()
         headers = {"Authorization": f"Bearer {token}"}
+        
+        # Dynamically build the command URL based on user's region
+        command_url = f"https://{self.api_domain}/order-s/order/action/control/send"
 
-        # extendWeb must be a stringified string, not a dict
         extend_web_str = json.dumps({"inputParam": input_param or {}})
 
         payload = {
-            "product": "0_1067_1",
+            "product": self.product_code,      # Dynamic product code
             "deviceSn": self.device_sn,
             "deviceId": str(self.device_id),
             "code": code,
-            "codeGroup": "G1200",
+            "codeGroup": self.code_group,      # Dynamic code group
             "operationType": operation_type,
             "extendWeb": extend_web_str,
             "orderTimeout": timeout
         }
 
         _LOGGER.info("Sending PRO command %s...", code)
-        async with self.session.post(URL_COMMAND, headers=headers, json=payload) as resp:
+        async with self.session.post(command_url, headers=headers, json=payload) as resp:
             res_data = await resp.json()
             
-            # The PRO api returns 'id' for tracking
             order_id = res_data.get("id")
             if not order_id:
                 _LOGGER.error("PRO API Command failed or no ID returned: %s", res_data)
@@ -122,19 +133,17 @@ class SolarmanAPIClient:
 
     async def _async_poll_order_status(self, token: str, order_id: str, timeout: int):
         """Poll PRO order ID using a GET request."""
-        url = f"{URL_POLL}{order_id}"
+        # Dynamically build the poll URL
+        poll_url = f"https://{self.api_domain}/order-s/order/action/{order_id}"
         headers = {"Authorization": f"Bearer {token}"}
 
         start_time = time.time()
-        
-        # Node-RED flow uses a 10-second delay before checking status
         await asyncio.sleep(10)
 
         while time.time() - start_time < timeout:
-            async with self.session.get(url, headers=headers) as resp:
+            async with self.session.get(poll_url, headers=headers) as resp:
                 res = await resp.json()
                 
-                # Check for analysisResult which indicates completion
                 if res.get("analysisResult"):
                     _LOGGER.info("Order %s executed successfully.", order_id)
                     return res
@@ -144,4 +153,4 @@ class SolarmanAPIClient:
                     
             await asyncio.sleep(5)
 
-        raise Exception(f"Order polling timed out after {timeout} seconds.")    
+        raise Exception(f"Order polling timed out after {timeout} seconds.") 
