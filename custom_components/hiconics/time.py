@@ -37,7 +37,7 @@ class HiconicsTOUTime(CoordinatorEntity, TimeEntity):
         self._reg = f"C{base_reg}" if is_start else f"C{base_reg + 1}"
 
         time_type = "Start" if is_start else "End"
-        self._attr_name = f"TOU Slot {slot} {time_type}"
+        self._attr_name = f"Slot {slot} {time_type}"
         self._attr_unique_id = f"hiconics_{entry.entry_id}_tou_time_{slot}_{time_type.lower()}"
 
     @property
