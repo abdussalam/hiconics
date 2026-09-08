@@ -108,17 +108,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add(key)
             new_entities.append(HiconicsSensor(coordinator, entry, item))
 
-        # 2. TOU Slot Time Sensors (Slots 1 to 6)
-        for slot in range(1, 7):
-            start_key = f"tou_slot_{slot}_start"
-            if start_key not in known_keys:
-                known_keys.add(start_key)
-                new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=True))
-            end_key = f"tou_slot_{slot}_end"
-            if end_key not in known_keys:
-                known_keys.add(end_key)
-                new_entities.append(HiconicsTOUTimeSensor(coordinator, entry, slot, is_start=False))
-
         # 3. Dynamic extra registers
         extra_data = getattr(coordinator, "extra_data", {})
         controlled_keys = {"C1", "C32", "C33", "C34", "C35", "C36", "C37", "C38", "C216", "C217"}
@@ -228,49 +217,3 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
         extra = getattr(self.coordinator, "extra_data", {})
         return extra.get(self._key)
 
-
-class HiconicsTOUTimeSensor(CoordinatorEntity, SensorEntity):
-    """Read-only sensor for TOU Start and End Times."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:clock-outline"
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(self, coordinator, entry, slot: int, is_start: bool):
-        super().__init__(coordinator)
-        self.entry = entry
-        self._slot = slot
-
-        # Slot 1 starts at C40, Slot 2 at C46, etc.
-        base_reg = 40 + ((slot - 1) * 6)
-        self._reg = f"C{base_reg}" if is_start else f"C{base_reg + 1}"
-
-        time_type = "Start" if is_start else "End"
-        self._attr_name = f"TOU Slot {slot} {time_type} Time"
-        self._attr_unique_id = f"hiconics_{entry.entry_id}_tou_{slot}_{time_type.lower()}"
-
-    @property
-    def available(self) -> bool:
-        """Always show as available since these rely on manual pulling."""
-        return True    
-    
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
-            "manufacturer": "Hiconics",
-            "model": "HECS2-S6",
-            "name": "Hiconics Inverter",
-        }
-
-    @property
-    def native_value(self):
-        """Fetch the value from coordinator.extra_data and format as HH:MM."""
-        extra_data = getattr(self.coordinator, "extra_data", {})
-        raw_time = extra_data.get(self._reg)
-        if raw_time and str(raw_time) != "None":
-            val = str(raw_time).zfill(4)
-            if len(val) == 4:
-                return f"{val[:2]}:{val[2:]}"
-            return val
-        return "00:00"
