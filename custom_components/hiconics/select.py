@@ -3,6 +3,7 @@
 import logging
 from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -92,9 +93,8 @@ class HiconicsInverterModeSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def device_info(self):
-        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
-            "identifiers": {inverter_id},
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
             "manufacturer": "Hiconics",
             "model": "HECS2-S6",
             "name": "Hiconics Inverter",
@@ -106,9 +106,10 @@ class HiconicsInverterModeSelect(CoordinatorEntity, SelectEntity):
         return INVERTER_MODE_MAP_TO_TXT.get(raw, None)
 
     async def async_select_option(self, option: str) -> None:
+        if "C1" not in self.coordinator.extra_data:
+            raise HomeAssistantError("Cannot write to inverter: Mode register C1 has not been read yet.")
         num_val = INVERTER_MODE_MAP_TO_NUM.get(option, "1")
         params = {"C1": {"v": num_val}}
-        _LOGGER.info("Updating Inverter Working Mode (C1) to %s (%s)...", option, num_val)
         await self.api.async_send_command(code="s_A1", operation_type=5, input_param=params)
         self.coordinator.update_extra_data({"C1": num_val})
 
@@ -129,9 +130,8 @@ class HiconicsPeakUsageSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def device_info(self):
-        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
-            "identifiers": {inverter_id},
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
             "manufacturer": "Hiconics",
             "model": "HECS2-S6",
             "name": "Hiconics Inverter",
@@ -143,9 +143,10 @@ class HiconicsPeakUsageSelect(CoordinatorEntity, SelectEntity):
         return PEAK_USAGE_MAP_TO_TXT.get(raw, None)
 
     async def async_select_option(self, option: str) -> None:
+        if "C76" not in self.coordinator.extra_data:
+            raise HomeAssistantError("Cannot write to inverter: Peak usage register C76 has not been read yet.")
         num_val = PEAK_USAGE_MAP_TO_NUM.get(option, "0")
         params = {"C76": {"v": num_val}}
-        _LOGGER.info("Updating C76 Peak Usage Mode to %s (%s)...", option, num_val)
         await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
         self.coordinator.update_extra_data({"C76": num_val})
 
@@ -168,9 +169,8 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def device_info(self):
-        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
-            "identifiers": {inverter_id},
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
             "manufacturer": "Hiconics",
             "model": "HECS2-S6",
             "name": "Hiconics Inverter",
@@ -182,18 +182,16 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
         return TOU_MODE_MAP_TO_TXT.get(raw, None)
 
     async def async_select_option(self, option: str) -> None:
-        num_val = TOU_MODE_MAP_TO_NUM.get(option, "0")
         base_reg = 40 + ((self._slot - 1) * 6)
+        required_keys = [f"C{base_reg + i}" for i in range(6)]
+        
+        if not all(k in self.coordinator.extra_data for k in required_keys):
+            raise HomeAssistantError("Cannot write to inverter: TOU register block has not been read yet.")
 
-        current_map = {
-            f"C{base_reg}": self.coordinator.extra_data.get(f"C{base_reg}", "0000"),
-            f"C{base_reg+1}": self.coordinator.extra_data.get(f"C{base_reg+1}", "0000"),
-            f"C{base_reg+2}": self.coordinator.extra_data.get(f"C{base_reg+2}", "0"),
-            f"C{base_reg+3}": self.coordinator.extra_data.get(f"C{base_reg+3}", "25"),
-            f"C{base_reg+4}": self.coordinator.extra_data.get(f"C{base_reg+4}", "100"),
-            f"C{base_reg+5}": self.coordinator.extra_data.get(f"C{base_reg+5}", "18"),
-        }
+        num_val = TOU_MODE_MAP_TO_NUM.get(option, "0")
+        current_map = {k: str(self.coordinator.extra_data[k]) for k in required_keys}
         current_map[self._reg_key] = num_val
+
         params = {k: {"v": v} for k, v in current_map.items()}
         await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
         self.coordinator.update_extra_data(current_map)
