@@ -2,7 +2,10 @@
 
 import logging
 from datetime import timedelta
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .api import HiconicsAuthError, HiconicsConnectionError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,12 +28,13 @@ class HiconicsDataCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch live telemetry from Solarman API."""
         try:
-            # Make sure this line calls async_get_current_data(), NOT async_get_device_data()
             data = await self.api.async_get_current_data()
             if not data:
                 raise UpdateFailed("Failed to retrieve valid response from Solarman API.")
             return data
-        except Exception as err:
+        except HiconicsAuthError as err:
+            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+        except (HiconicsConnectionError, Exception) as err:
             raise UpdateFailed(f"Error fetching Hiconics data: {err}") from err
 
     def update_extra_data(self, new_data: dict):
