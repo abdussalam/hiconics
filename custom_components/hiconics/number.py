@@ -3,6 +3,7 @@
 import logging
 from homeassistant.components.number import NumberEntity
 from homeassistant.const import EntityCategory
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -27,7 +28,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     entities = []
 
-    # 1. TOU Number Entities
     for slot in range(1, 7):
         base_reg = 40 + ((slot - 1) * 6)
         entities.append(
@@ -46,7 +46,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
             )
         )
 
-    # 2. Battery & System Configuration Number Entities
     for reg_key, config in BATTERY_CONFIG_MAP.items():
         entities.append(
             HiconicsBatteryNumber(
@@ -80,36 +79,32 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self):
-        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
-            "identifiers": {inverter_id},
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
             "manufacturer": "Hiconics",
             "model": "HECS2-S6",
             "name": "Hiconics Inverter",
         }
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         val = self.coordinator.extra_data.get(self._reg_key)
         if val is None:
-            return self._attr_native_min_value
+            return None
         try:
             return float(val)
-        except ValueError:
-            return self._attr_native_min_value
+        except (ValueError, TypeError):
+            return None
 
     async def async_set_native_value(self, value: float) -> None:
-        val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
         base_reg = 40 + ((self._slot - 1) * 6)
+        required_keys = [f"C{base_reg + i}" for i in range(6)]
+        
+        if not all(k in self.coordinator.extra_data for k in required_keys):
+            raise HomeAssistantError("Cannot write to inverter: TOU register block has not been read yet.")
 
-        current_map = {
-            f"C{base_reg}": self.coordinator.extra_data.get(f"C{base_reg}", "0000"),
-            f"C{base_reg+1}": self.coordinator.extra_data.get(f"C{base_reg+1}", "0000"),
-            f"C{base_reg+2}": self.coordinator.extra_data.get(f"C{base_reg+2}", "0"),
-            f"C{base_reg+3}": self.coordinator.extra_data.get(f"C{base_reg+3}", "25.0"),
-            f"C{base_reg+4}": self.coordinator.extra_data.get(f"C{base_reg+4}", "100"),
-            f"C{base_reg+5}": self.coordinator.extra_data.get(f"C{base_reg+5}", "18"),
-        }
+        val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
+        current_map = {k: str(self.coordinator.extra_data[k]) for k in required_keys}
         current_map[self._reg_key] = val_str
 
         params = {k: {"v": v} for k, v in current_map.items()}
@@ -139,39 +134,39 @@ class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self):
-        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
-            "identifiers": {inverter_id},
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
             "manufacturer": "Hiconics",
             "model": "HECS2-S6",
             "name": "Hiconics Inverter",
         }
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         val = self.coordinator.extra_data.get(self._reg_key)
         if val is None:
-            return self._attr_native_min_value
+            return None
         try:
             return float(val)
-        except ValueError:
-            return self._attr_native_min_value
+        except (ValueError, TypeError):
+            return None
 
     async def async_set_native_value(self, value: float) -> None:
-        val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
+        if self._reg_key in ["C33", "C34", "C35", "C36", "C37", "C38"]:
+            required_keys = ["C33", "C34", "C35", "C36", "C37", "C38"]
+            if not all(k in self.coordinator.extra_data for k in required_keys):
+                raise HomeAssistantError("Cannot write to inverter: Battery register block has not been read yet.")
+            current_map = {k: str(self.coordinator.extra_data[k]) for k in required_keys}
+            code = "s_A6"
+        else:
+            if self._reg_key not in self.coordinator.extra_data:
+                raise HomeAssistantError(f"Cannot write to inverter: {self._reg_key} has not been read yet.")
+            current_map = {self._reg_key: str(self.coordinator.extra_data[self._reg_key])}
+            code = "s_A8"
 
-        current_map = {
-            "C33": self.coordinator.extra_data.get("C33", "10"),
-            "C34": self.coordinator.extra_data.get("C34", "100"),
-            "C35": self.coordinator.extra_data.get("C35", "5"),
-            "C36": self.coordinator.extra_data.get("C36", "10"),
-            "C37": self.coordinator.extra_data.get("C37", "100"),
-            "C38": self.coordinator.extra_data.get("C38", "5"),
-        }
+        val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
         current_map[self._reg_key] = val_str
 
         params = {k: {"v": v} for k, v in current_map.items()}
-        _LOGGER.info("Updating Config %s to %s...", self._reg_key, val_str)
-
-        await self.api.async_send_command(code="s_A6", operation_type=5, input_param=params)
+        await self.api.async_send_command(code=code, operation_type=5, input_param=params)
         self.coordinator.update_extra_data(current_map)
