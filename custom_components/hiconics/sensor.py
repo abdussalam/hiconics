@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -278,7 +278,7 @@ class HiconicsLastTouReadSensor(CoordinatorEntity, SensorEntity):
 
 
 class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
-    """Derived sensor showing the parsed RTC timestamp matching 'RTC Time' without day-of-week suffix."""
+    """Derived sensor showing the parsed RTC timestamp matching 'RTC Time' in local timezone."""
 
     _attr_has_entity_name = True
     _attr_name = "RTC Timestamp"
@@ -304,7 +304,7 @@ class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Find the raw value from the 'RTC Time' sensor in dataList and parse it."""
+        """Find the raw value from the 'RTC Time' sensor in dataList and parse it with local timezone."""
         raw_val = None
         
         if self.coordinator.data:
@@ -330,7 +330,8 @@ class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
                 time_str = str(raw_val).split("-")[0].strip()
 
             dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-            return dt.replace(tzinfo=timezone.utc)
+            # Attach Home Assistant's configured local timezone
+            return dt.replace(tzinfo=self.hass.config.time_zone)
         except (ValueError, TypeError) as err:
             _LOGGER.debug("Failed to parse RTC Time value '%s': %s", raw_val, err)
             return None
