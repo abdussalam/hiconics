@@ -61,7 +61,7 @@ class HiconicsTOUTime(CoordinatorEntity, TimeEntity):
         raw_time = extra_data.get(self._reg)
         if raw_time is None or str(raw_time) == "None":
             return None
-        val = str(raw_time).zfill(4)
+        val = str(raw_time).replace(":", "").strip().zfill(4)
         if len(val) == 4 and val.isdigit():
             try:
                 return time(hour=int(val[:2]), minute=int(val[2:]))
@@ -78,17 +78,15 @@ class HiconicsTOUTime(CoordinatorEntity, TimeEntity):
             raise HomeAssistantError("Cannot write to inverter: TOU register block has not been read yet.")
 
         time_str = f"{value.hour:02d}{value.minute:02d}"
-        
+
         payload = {
             "entry_id": self.entry.entry_id,
             "slot": self._slot,
-            "start_time": time_str if self._is_start else str(self.coordinator.extra_data[f"C{base_reg}"]).zfill(4),
-            "end_time": time_str if not self._is_start else str(self.coordinator.extra_data[f"C{base_reg+1}"]).zfill(4),
-            "mode": int(self.coordinator.extra_data[f"C{base_reg+2}"]),
-            "max_amps": float(self.coordinator.extra_data[f"C{base_reg+3}"]),
-            "max_soc": float(self.coordinator.extra_data[f"C{base_reg+4}"]),
-            "min_soc": float(self.coordinator.extra_data[f"C{base_reg+5}"])
         }
+        if self._is_start:
+            payload["start_time"] = time_str
+        else:
+            payload["end_time"] = time_str
 
         await self.hass.services.async_call(DOMAIN, "set_tou_slot", payload)
         self.coordinator.extra_data[self._reg] = time_str
