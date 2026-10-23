@@ -17,7 +17,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     api = hass.data[DOMAIN][entry.entry_id]["api"]
 
     entities = [
-        HiconicsReadSettingsButton(coordinator, api, entry),
+        HiconicsPullTouButton(coordinator, api, entry),
+        HiconicsPullInverterModeButton(coordinator, api, entry),
+        HiconicsPullBatteryButton(coordinator, api, entry),
     ]
 
     for slot in range(1, 7):
@@ -26,19 +28,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities)
 
 
-class HiconicsReadSettingsButton(CoordinatorEntity, ButtonEntity):
-    """Button to manually force reading settings from the inverter."""
+class HiconicsPullTouButton(CoordinatorEntity, ButtonEntity):
+    """Button to pull TOU settings from the inverter."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:refresh"
+    _attr_icon = "mdi:cloud-download"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_name = "Read Inverter Settings"
+    _attr_name = "Pull TOU Settings"
 
     def __init__(self, coordinator, api, entry):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
-        self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_read_settings"
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_pull_tou"
 
     @property
     def device_info(self):
@@ -50,9 +52,69 @@ class HiconicsReadSettingsButton(CoordinatorEntity, ButtonEntity):
         }
 
     async def async_press(self) -> None:
-        """Read TOU, mode, and battery settings from API."""
+        """Read TOU settings from API."""
         await self.hass.services.async_call(
             DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "tou"}
+        )
+
+
+class HiconicsPullInverterModeButton(CoordinatorEntity, ButtonEntity):
+    """Button to pull Inverter Mode settings from the inverter."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:cloud-download"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_name = "Pull Inverter Mode"
+
+    def __init__(self, coordinator, api, entry):
+        super().__init__(coordinator)
+        self.api = api
+        self.entry = entry
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_pull_mode"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    async def async_press(self) -> None:
+        """Read Inverter Mode settings from API."""
+        await self.hass.services.async_call(
+            DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "mode"}
+        )
+
+
+class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
+    """Button to pull Battery settings from the inverter."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:cloud-download"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_name = "Pull Battery Settings"
+
+    def __init__(self, coordinator, api, entry):
+        super().__init__(coordinator)
+        self.api = api
+        self.entry = entry
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_pull_battery"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, f"{self.entry.entry_id}_inverter")},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    async def async_press(self) -> None:
+        """Read Battery settings from API."""
+        await self.hass.services.async_call(
+            DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "battery"}
         )
 
 
