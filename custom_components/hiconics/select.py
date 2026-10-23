@@ -147,13 +147,12 @@ class HiconicsPeakUsageSelect(CoordinatorEntity, SelectEntity):
         if "C76" not in self.coordinator.extra_data:
             raise HomeAssistantError("Cannot write to inverter: Peak usage register C76 has not been read yet.")
         num_val = PEAK_USAGE_MAP_TO_NUM.get(option, "0")
-        params = {"C76": {"v": num_val}}
-        await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-        self.coordinator.update_extra_data({"C76": num_val})
+        self.coordinator.extra_data["C76"] = num_val
+        self.async_write_ha_state()
 
 
 class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
-    """Interactive mode select control for TOU slots."""
+    """Interactive mode select control for TOU slots (local staging)."""
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
@@ -188,14 +187,10 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
         required_keys = [f"C{base_reg + i}" for i in range(6)]
         
         if not all(k in self.coordinator.extra_data for k in required_keys):
-            raise HomeAssistantError("Cannot write to inverter: TOU register block has not been read yet.")
+            raise HomeAssistantError("Cannot stage value: TOU register block has not been read yet.")
 
         num_val = TOU_MODE_MAP_TO_NUM.get(option, option.split("-")[0].strip())
 
-        payload = {
-            "entry_id": self.entry.entry_id,
-            "slot": self._slot,
-            "mode": str(num_val),
-        }
-
-        await self.hass.services.async_call(DOMAIN, "set_tou_slot", payload)
+        # Stage change locally without triggering immediate network calls
+        self.coordinator.extra_data[self._reg_key] = str(num_val)
+        self.async_write_ha_state()
