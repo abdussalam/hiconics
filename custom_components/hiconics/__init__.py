@@ -90,7 +90,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                         k: str(v["v"]) if isinstance(v, dict) and "v" in v else str(v)
                         for k, v in parsed.items()
                     }
-                    coordinator.update_extra_data(flat_data)
+                    coordinator.update_extra_data(flat_data, is_tou=(setting_type == "tou"))
                     return True
         except Exception as err:
             _LOGGER.error("Failed to parse read_settings response for %s: %s", setting_type, err)
@@ -134,7 +134,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         _LOGGER.debug("Sending TOU Slot %s s_A8 payload: %s", slot, params)
         await api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-        coordinator.update_extra_data({k: v["v"] for k, v in params.items()})
+        coordinator.update_extra_data({k: v["v"] for k, v in params.items()}, is_tou=True)
 
         await asyncio.sleep(15)
         await _fetch_and_update_registers(api, coordinator, "tou")
@@ -212,10 +212,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if raw:
                     parsed = json.loads(raw) if isinstance(raw, str) else raw
                     if isinstance(parsed, dict):
-                        coordinator.update_extra_data({
-                            k: str(v["v"]) if isinstance(v, dict) and "v" in v else str(v)
-                            for k, v in parsed.items()
-                        })
+                        coordinator.update_extra_data(
+                            {
+                                k: str(v["v"]) if isinstance(v, dict) and "v" in v else str(v)
+                                for k, v in parsed.items()
+                            },
+                            is_tou=(setting_type == "tou"),
+                        )
             except Exception as err:
                 _LOGGER.error("Startup fetch error for %s: %s", setting_type, err)
             await asyncio.sleep(3)
