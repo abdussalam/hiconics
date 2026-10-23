@@ -108,10 +108,9 @@ class HiconicsInverterModeSelect(CoordinatorEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         if "C1" not in self.coordinator.extra_data:
             raise HomeAssistantError("Cannot write to inverter: Mode register C1 has not been read yet.")
-        num_val = INVERTER_MODE_MAP_TO_NUM.get(option, "1")
-        params = {"C1": {"v": num_val}}
-        await self.api.async_send_command(code="s_A1", operation_type=5, input_param=params)
-        self.coordinator.update_extra_data({"C1": num_val})
+        num_val = INVERTER_MODE_MAP_TO_NUM.get(option, option.split("-")[0].strip())
+        payload = {"entry_id": self.entry.entry_id, "mode": num_val}
+        await self.hass.services.async_call(DOMAIN, "set_inverter_mode", payload)
 
 
 class HiconicsPeakUsageSelect(CoordinatorEntity, SelectEntity):
@@ -188,10 +187,12 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
         if not all(k in self.coordinator.extra_data for k in required_keys):
             raise HomeAssistantError("Cannot write to inverter: TOU register block has not been read yet.")
 
-        num_val = TOU_MODE_MAP_TO_NUM.get(option, "0")
-        current_map = {k: str(self.coordinator.extra_data[k]) for k in required_keys}
-        current_map[self._reg_key] = num_val
+        num_val = TOU_MODE_MAP_TO_NUM.get(option, option.split("-")[0].strip())
 
-        params = {k: {"v": v} for k, v in current_map.items()}
-        await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-        self.coordinator.update_extra_data(current_map)
+        payload = {
+            "entry_id": self.entry.entry_id,
+            "slot": self._slot,
+            "mode": str(num_val),
+        }
+
+        await self.hass.services.async_call(DOMAIN, "set_tou_slot", payload)
