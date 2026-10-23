@@ -1,6 +1,8 @@
 """Sensor platform for Hiconics inverter and battery."""
 
 import logging
+from datetime import datetime
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -25,11 +27,13 @@ BATTERY_KEYWORDS = ["battery", "inline", "parallel", "charg", "soc", "b_c", "cap
 
 
 def is_battery_sensor(key: str, name: str) -> bool:
+    """Determine if a key or name corresponds to a battery sensor."""
     lower = f"{key} {name or ''}".lower()
     return any(w in lower for w in BATTERY_KEYWORDS)
 
 
 def get_entity_category(key: str, name: str):
+    """Categorize diagnostic sensors automatically."""
     lower = f"{key} {name or ''}".lower()
     if any(w in lower for w in DIAGNOSTIC_KEYWORDS):
         return EntityCategory.DIAGNOSTIC
@@ -37,6 +41,7 @@ def get_entity_category(key: str, name: str):
 
 
 def normalize_unit(unit: str) -> str:
+    """Normalize unit string formats for Home Assistant compatibility."""
     if not unit:
         return None
     units_map = {"KW": "kW", "HZ": "Hz", "℃": "°C", "Var": "var"}
@@ -44,6 +49,7 @@ def normalize_unit(unit: str) -> str:
 
 
 def get_device_class(unit: str):
+    """Map normalized unit to SensorDeviceClass."""
     mapping = {
         "V": SensorDeviceClass.VOLTAGE,
         "mV": SensorDeviceClass.VOLTAGE,
@@ -63,6 +69,7 @@ def get_device_class(unit: str):
 
 
 def get_state_class(unit: str, key: str, name: str):
+    """Determine appropriate state class based on unit and name."""
     lower = f"{key} {name or ''}".lower()
     if unit in ["w", "kw", "kva", "kvar", "var", "v", "mv", "a", "hz", "%", "°c", "s"]:
         return SensorStateClass.MEASUREMENT
@@ -74,6 +81,7 @@ def get_state_class(unit: str, key: str, name: str):
 
 
 def get_clean_entity_name(raw_name: str, key: str, is_battery: bool) -> str:
+    """Clean up prefix redundancies from raw entity names."""
     name = raw_name or key
     clean = name.strip()
     prefixes = ["hiconics battery ", "hiconics inverter ", "hiconics "]
@@ -91,6 +99,7 @@ def get_clean_entity_name(raw_name: str, key: str, is_battery: bool) -> str:
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up Hiconics sensor entities dynamically."""
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     known_keys = set()
 
@@ -98,9 +107,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         new_entities = []
 
         data = coordinator.data or {}
-        data_list = data.get("dataList", [])
+        data_list = data.get("dataList", []) if isinstance(data, dict) else []
 
-        # 1. Standard telemetry sensors
+        # 1. Standard telemetry sensors from Solarman API dataList
         for item in data_list:
             key = item.get("key")
             if not key or key in known_keys:
@@ -108,7 +117,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add(key)
             new_entities.append(HiconicsSensor(coordinator, entry, item))
 
-        # 3. Dynamic extra registers
+        # 2. Dynamic extra registers from on-demand reads
         extra_data = getattr(coordinator, "extra_data", {})
         controlled_keys = {"C1", "C32", "C33", "C34", "C35", "C36", "C37", "C38", "C216", "C217"}
 
@@ -120,6 +129,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
             known_keys.add(key)
             new_entities.append(HiconicsExtraSensor(coordinator, entry, key))
+
+        # 3. Diagnostic Timestamp Sensor for Last TOU Read Time
+        if "last_tou_read" not in known_keys:
+            known_keys.add("last_tou_read")
+            new_entities.append(HiconicsLastTouReadSensor(coordinator, entry))
 
         if new_entities:
             async_add_entities(new_entities)
@@ -134,6 +148,7 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, coordinator, entry, item):
+        """Initialize telemetry sensor."""
         super().__init__(coordinator)
         self.entry = entry
         self._key = item.get("key")
@@ -153,6 +168,7 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
+        """Link sensor to either Battery or Inverter device in Home Assistant."""
         inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         if self._is_battery:
             via_device_id = dr.async_get_device_id_by_identifier(
@@ -174,9 +190,11 @@ class HiconicsSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
+        """Extract sensor value from current telemetry data."""
         if not self.coordinator.data:
             return None
-        for item in self.coordinator.data.get("dataList", []):
+        data_list = self.coordinator.data.get("dataList", []) if isinstance(self.coordinator.data, dict) else []
+        for item in data_list:
             if item.get("key") == self._key:
                 val = item.get("value")
                 if val is None or val == "":
@@ -194,6 +212,7 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, coordinator, entry, key: str):
+        """Initialize extra register sensor."""
         super().__init__(coordinator)
         self.entry = entry
         self._key = key
@@ -204,6 +223,7 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
+        """Return inverter device info."""
         inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
         return {
             "identifiers": {inverter_id},
@@ -214,6 +234,38 @@ class HiconicsExtraSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
+        """Get value from extra_data dictionary."""
         extra = getattr(self.coordinator, "extra_data", {})
         return extra.get(self._key)
 
+
+class HiconicsLastTouReadSensor(CoordinatorEntity, SensorEntity):
+    """Diagnostic sensor displaying UTC timestamp of last TOU read."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Last TOU Read Time"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clock-check-outline"
+
+    def __init__(self, coordinator, entry):
+        """Initialize diagnostic timestamp sensor."""
+        super().__init__(coordinator)
+        self.entry = entry
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_sensor_last_tou_read"
+
+    @property
+    def device_info(self):
+        """Return inverter device info."""
+        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
+        return {
+            "identifiers": {inverter_id},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return UTC datetime timestamp recorded in coordinator."""
+        return getattr(self.coordinator, "last_tou_read_time", None)
