@@ -28,12 +28,12 @@ SERVICE_SEND_COMMAND = "send_command"
 SET_TOU_SLOT_SCHEMA = vol.Schema({
     vol.Optional("entry_id"): cv.string,
     vol.Required("slot"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
-    vol.Optional("start_time", default="0000"): cv.string,
-    vol.Optional("end_time", default="0000"): cv.string,
-    vol.Optional("mode", default=0): vol.Coerce(int),
-    vol.Optional("max_amps", default=25): vol.Coerce(float),
-    vol.Optional("max_soc", default=100): vol.Coerce(float),
-    vol.Optional("min_soc", default=18): vol.Coerce(float),
+    vol.Optional("start_time"): cv.string,
+    vol.Optional("end_time"): cv.string,
+    vol.Optional("mode"): vol.Coerce(str),
+    vol.Optional("max_amps"): vol.Coerce(str),
+    vol.Optional("max_soc"): vol.Coerce(str),
+    vol.Optional("min_soc"): vol.Coerce(str),
 })
 
 SET_INVERTER_MODE_SCHEMA = vol.Schema({
@@ -101,14 +101,28 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         api, coordinator = entry_data["api"], entry_data["coordinator"]
 
         slot = call.data["slot"]
-        start_time = call.data["start_time"].replace(":", "")
-        end_time = call.data["end_time"].replace(":", "")
-        mode = str(call.data["mode"])
-        max_amps = str(call.data["max_amps"])
-        max_soc = str(call.data["max_soc"])
-        min_soc = str(call.data["min_soc"])
-
         base_reg = 40 + ((slot - 1) * 6)
+
+        def get_clean_reg(reg_offset: int) -> str:
+            key = f"C{base_reg + reg_offset}"
+            val = coordinator.extra_data.get(key, "")
+            val_str = str(val).replace(":", "").strip()
+            if "-" in val_str:
+                val_str = val_str.split("-")[0].strip()
+            if val_str.replace(".", "", 1).isdigit():
+                val_str = str(int(float(val_str)))
+            return val_str
+
+        start_time = str(call.data.get("start_time", get_clean_reg(0))).replace(":", "").strip().zfill(4)
+        end_time = str(call.data.get("end_time", get_clean_reg(1))).replace(":", "").strip().zfill(4)
+
+        raw_mode = str(call.data.get("mode", get_clean_reg(2)))
+        mode = raw_mode.split("-")[0].strip() if "-" in raw_mode else str(int(float(raw_mode)))
+
+        max_amps = str(int(float(call.data.get("max_amps", get_clean_reg(3)))))
+        max_soc = str(int(float(call.data.get("max_soc", get_clean_reg(4)))))
+        min_soc = str(int(float(call.data.get("min_soc", get_clean_reg(5)))))
+
         params = {
             f"C{base_reg}": {"v": start_time},
             f"C{base_reg+1}": {"v": end_time},
@@ -117,6 +131,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             f"C{base_reg+4}": {"v": max_soc},
             f"C{base_reg+5}": {"v": min_soc},
         }
+
+        _LOGGER.debug("Sending TOU Slot %s s_A8 payload: %s", slot, params)
         await api.async_send_command(code="s_A8", operation_type=5, input_param=params)
         coordinator.update_extra_data({k: v["v"] for k, v in params.items()})
 
@@ -126,7 +142,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def handle_set_inverter_mode(call: ServiceCall):
         entry_data = _get_entry_data(hass, call)
         api, coordinator = entry_data["api"], entry_data["coordinator"]
-        mode = str(call.data["mode"])
+        raw_mode = str(call.data["mode"])
+        mode = raw_mode.split("-")[0].strip() if "-" in raw_mode else str(int(float(raw_mode)))
         await api.async_send_command(code="s_A1", operation_type=5, input_param={"C1": {"v": mode}})
         await asyncio.sleep(15)
         await _fetch_and_update_registers(api, coordinator, "mode")
@@ -186,7 +203,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Fetch all configurations from hardware upon integration boot."""
         _LOGGER.info("Starting background fetch of inverter settings...")
         await asyncio.sleep(5)
-        # Call fetch helpers on startup task
         for setting_type in ("mode", "battery", "tou"):
             code_map = {"mode": "r_A1", "battery": "r_A6", "tou": "r_A8"}
             param_key = "C1" if setting_type == "mode" else "C32"
