@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+import homeassistant.util.dt as dt_util
 
 from .const import DOMAIN
 
@@ -136,7 +137,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add("last_tou_read")
             new_entities.append(HiconicsLastTouReadSensor(coordinator, entry))
 
-        # 4. Derived RTC Timestamp Sensor matching "RTC Time"
+        # 4. Derived RTC Timestamp Sensor (Always setup so it evaluates dynamically)
         if "rtc_timestamp" not in known_keys:
             known_keys.add("rtc_timestamp")
             new_entities.append(HiconicsRtcTimestampSensor(coordinator, entry))
@@ -278,7 +279,7 @@ class HiconicsLastTouReadSensor(CoordinatorEntity, SensorEntity):
 
 
 class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
-    """Derived sensor showing the parsed RTC timestamp matching 'RTC Time' in local timezone."""
+    """Derived sensor showing the parsed RTC timestamp matching 'RTC Time' in local time."""
 
     _attr_has_entity_name = True
     _attr_name = "RTC Timestamp"
@@ -304,7 +305,7 @@ class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Find the raw value from the 'RTC Time' sensor in dataList and parse it with local timezone."""
+        """Dynamically scan dataList for 'RTC Time' and parse it directly as local time."""
         raw_val = None
         
         if self.coordinator.data:
@@ -313,16 +314,15 @@ class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
                 raw_name = item.get("name") or item.get("key") or ""
                 cleaned_name = get_clean_entity_name(raw_name, item.get("key", ""), False)
                 
-                # Specifically match the "RTC Time" sensor coming from the inverter
-                if cleaned_name.lower() == "rtc time" or str(item.get("key")).lower() == "rtc_time":
+                if cleaned_name.lower() == "rtc time" or "rtc" in str(item.get("key", "")).lower() or "rtc" in str(raw_name).lower():
                     raw_val = item.get("value")
-                    break
+                    if raw_val:
+                        break
 
         if not raw_val:
             return None
 
         try:
-            # Extract the YYYY-MM-DD HH:MM:SS timestamp portion, stripping any day-of-week suffix (e.g. " -5")
             match = re.search(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})", str(raw_val))
             if match:
                 time_str = match.group(1)
@@ -330,8 +330,12 @@ class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
                 time_str = str(raw_val).split("-")[0].strip()
 
             dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-            # Attach Home Assistant's configured local timezone
-            return dt.replace(tzinfo=self.hass.config.time_zone)
+            
+            # Attach Home Assistant's local timezone directly without UTC offset shifting
+            local_tz = dt_util.get_time_zone(self.hass.config.time_zone)
+            if local_tz:
+                return dt.replace(tzinfo=local_tz)
+            return dt
         except (ValueError, TypeError) as err:
             _LOGGER.debug("Failed to parse RTC Time value '%s': %s", raw_val, err)
             return None
