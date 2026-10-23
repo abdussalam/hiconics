@@ -1,6 +1,7 @@
 """Sensor platform for Hiconics inverter and battery."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from homeassistant.components.sensor import (
@@ -135,7 +136,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             known_keys.add("last_tou_read")
             new_entities.append(HiconicsLastTouReadSensor(coordinator, entry))
 
-        # 4. Derived RTC Timestamp Sensor
+        # 4. Derived RTC Timestamp Sensor matching "RTC Time"
         if "rtc_timestamp" not in known_keys:
             known_keys.add("rtc_timestamp")
             new_entities.append(HiconicsRtcTimestampSensor(coordinator, entry))
@@ -277,7 +278,7 @@ class HiconicsLastTouReadSensor(CoordinatorEntity, SensorEntity):
 
 
 class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
-    """Derived sensor showing the parsed RTC timestamp without day-of-week suffix."""
+    """Derived sensor showing the parsed RTC timestamp matching 'RTC Time' without day-of-week suffix."""
 
     _attr_has_entity_name = True
     _attr_name = "RTC Timestamp"
@@ -303,33 +304,33 @@ class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Find the raw RTC Time value from dataList and strip day-of-week suffix."""
+        """Find the raw value from the 'RTC Time' sensor in dataList and parse it."""
         raw_val = None
         
         if self.coordinator.data:
             data_list = self.coordinator.data.get("dataList", []) if isinstance(self.coordinator.data, dict) else []
             for item in data_list:
-                name = str(item.get("name", "")).lower()
-                key = str(item.get("key", "")).lower()
-                if "rtc time" in name or "rtc" in key or "system time" in name:
+                raw_name = item.get("name") or item.get("key") or ""
+                cleaned_name = get_clean_entity_name(raw_name, item.get("key", ""), False)
+                
+                # Specifically match the "RTC Time" sensor coming from the inverter
+                if cleaned_name.lower() == "rtc time" or str(item.get("key")).lower() == "rtc_time":
                     raw_val = item.get("value")
-                    break
-
-        if not raw_val:
-            extra = getattr(self.coordinator, "extra_data", {})
-            for k, v in extra.items():
-                if "rtc" in k.lower():
-                    raw_val = v
                     break
 
         if not raw_val:
             return None
 
         try:
-            # Strip day of week suffix (e.g., " -5")
-            time_str = str(raw_val).split("-")[0].strip()
+            # Extract the YYYY-MM-DD HH:MM:SS timestamp portion, stripping any day-of-week suffix (e.g. " -5")
+            match = re.search(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})", str(raw_val))
+            if match:
+                time_str = match.group(1)
+            else:
+                time_str = str(raw_val).split("-")[0].strip()
+
             dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
             return dt.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError) as err:
-            _LOGGER.debug("Failed to parse RTC time value '%s': %s", raw_val, err)
+            _LOGGER.debug("Failed to parse RTC Time value '%s': %s", raw_val, err)
             return None
