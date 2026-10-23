@@ -118,7 +118,7 @@ class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
 
 
 class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
-    """Button to push all staged TOU slots to the inverter in a single atomic batch call."""
+    """Button to push all staged TOU slots to the inverter with busy-state disabling."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:cloud-upload"
@@ -129,6 +129,7 @@ class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
+        self._is_busy = False
         self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_apply_all_tou"
 
     @property
@@ -140,38 +141,50 @@ class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
             "name": "Hiconics Inverter",
         }
 
+    @property
+    def available(self) -> bool:
+        """Return False to grey out/disable the button while an API action is in progress."""
+        if self._is_busy:
+            return False
+        return super().available
+
     async def async_press(self) -> None:
-        """Collect all 36 TOU registers across all 6 slots and push them in one single s_A8 command."""
-        params = {}
+        """Push all 36 TOU registers in a single batch call while locking the button."""
+        self._is_busy = True
+        self.async_write_ha_state()
 
-        for reg in range(40, 76):
-            key = f"C{reg}"
-            val = self.coordinator.extra_data.get(key)
-            
-            if val is None or str(val).strip() == "" or str(val).lower() == "none":
-                raise HomeAssistantError(f"Cannot apply settings: Register {key} is empty or unread. Please click 'Pull TOU Settings' first.")
-
-            val_str = str(val).replace(":", "").strip()
-            if "-" in val_str:
-                val_str = val_str.split("-")[0].strip()
-            if val_str.replace(".", "", 1).isdigit():
-                val_str = str(int(float(val_str)))
-
-            # Zero-pad start and end times (offsets 0 and 1 in each 6-register block)
-            slot_offset = (reg - 40) % 6
-            if slot_offset in (0, 1):
-                val_str = val_str.zfill(4)
-
-            params[key] = {"v": val_str}
-
-        _LOGGER.debug("Sending all TOU slots in single s_A8 batch payload: %s", params)
-        
         try:
+            params = {}
+
+            for reg in range(40, 76):
+                key = f"C{reg}"
+                val = self.coordinator.extra_data.get(key)
+                
+                if val is None or str(val).strip() == "" or str(val).lower() == "none":
+                    raise HomeAssistantError(f"Cannot apply settings: Register {key} is empty or unread. Please click 'Pull TOU Settings' first.")
+
+                val_str = str(val).replace(":", "").strip()
+                if "-" in val_str:
+                    val_str = val_str.split("-")[0].strip()
+                if val_str.replace(".", "", 1).isdigit():
+                    val_str = str(int(float(val_str)))
+
+                slot_offset = (reg - 40) % 6
+                if slot_offset in (0, 1):
+                    val_str = val_str.zfill(4)
+
+                params[key] = {"v": val_str}
+
+            _LOGGER.debug("Sending all TOU slots in single s_A8 batch payload: %s", params)
+            
             await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
+            self.coordinator.update_extra_data({k: v["v"] for k, v in params.items()}, is_tou=True)
+
         except Exception as err:
             if "OR_THERE_ARE_ORDER_BEING_SENT" in str(err):
                 raise HomeAssistantError("Inverter is busy processing another command. Please wait 10 seconds and try again.")
             raise
-
-        # Update local cache with successfully applied values
-        self.coordinator.update_extra_data({k: v["v"] for k, v in params.items()}, is_tou=True)
+        finally:
+            # Always re-enable the button once finished or failed
+            self._is_busy = False
+            self.async_write_ha_state()
