@@ -1,7 +1,7 @@
 """Sensor platform for Hiconics inverter and battery."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -134,6 +134,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if "last_tou_read" not in known_keys:
             known_keys.add("last_tou_read")
             new_entities.append(HiconicsLastTouReadSensor(coordinator, entry))
+
+        # 4. Derived RTC Timestamp Sensor
+        if "rtc_timestamp" not in known_keys:
+            known_keys.add("rtc_timestamp")
+            new_entities.append(HiconicsRtcTimestampSensor(coordinator, entry))
 
         if new_entities:
             async_add_entities(new_entities)
@@ -269,3 +274,62 @@ class HiconicsLastTouReadSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """Return UTC datetime timestamp recorded in coordinator."""
         return getattr(self.coordinator, "last_tou_read_time", None)
+
+
+class HiconicsRtcTimestampSensor(CoordinatorEntity, SensorEntity):
+    """Derived sensor showing the parsed RTC timestamp without day-of-week suffix."""
+
+    _attr_has_entity_name = True
+    _attr_name = "RTC Timestamp"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-outline"
+
+    def __init__(self, coordinator, entry):
+        """Initialize RTC Timestamp sensor."""
+        super().__init__(coordinator)
+        self.entry = entry
+        self._attr_unique_id = f"hiconics_{entry.entry_id}_sensor_rtc_timestamp"
+
+    @property
+    def device_info(self):
+        """Return inverter device info."""
+        inverter_id = (DOMAIN, f"{self.entry.entry_id}_inverter")
+        return {
+            "identifiers": {inverter_id},
+            "manufacturer": "Hiconics",
+            "model": "HECS2-S6",
+            "name": "Hiconics Inverter",
+        }
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Find the raw RTC Time value from dataList and strip day-of-week suffix."""
+        raw_val = None
+        
+        if self.coordinator.data:
+            data_list = self.coordinator.data.get("dataList", []) if isinstance(self.coordinator.data, dict) else []
+            for item in data_list:
+                name = str(item.get("name", "")).lower()
+                key = str(item.get("key", "")).lower()
+                if "rtc time" in name or "rtc" in key or "system time" in name:
+                    raw_val = item.get("value")
+                    break
+
+        if not raw_val:
+            extra = getattr(self.coordinator, "extra_data", {})
+            for k, v in extra.items():
+                if "rtc" in k.lower():
+                    raw_val = v
+                    break
+
+        if not raw_val:
+            return None
+
+        try:
+            # Strip day of week suffix (e.g., " -5")
+            time_str = str(raw_val).split("-")[0].strip()
+            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            return dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError) as err:
+            _LOGGER.debug("Failed to parse RTC time value '%s': %s", raw_val, err)
+            return None
