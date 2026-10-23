@@ -36,6 +36,10 @@ class HiconicsAuthError(HomeAssistantError):
     """Error raised when Solarman authentication fails."""
 
 
+class HiconicsConnectionError(HomeAssistantError):
+    """Error raised when network connection fails."""
+
+
 class SolarmanAPIClient:
     """API Client to interface with Solarman Cloud."""
 
@@ -50,7 +54,6 @@ class SolarmanAPIClient:
         self.device_sn = config.get(CONF_DEVICE_SN, "")
         self.device_id = config.get(CONF_DEVICE_ID, "")
 
-        # New configurable parameters
         self.api_domain = config.get(CONF_API_DOMAIN, DEFAULT_API_DOMAIN)
         self.product_code = config.get(CONF_PRODUCT_CODE, DEFAULT_PRODUCT_CODE)
         self.code_group = config.get(CONF_CODE_GROUP, DEFAULT_CODE_GROUP)
@@ -72,16 +75,24 @@ class SolarmanAPIClient:
         }
 
         _LOGGER.debug("Requesting Solarman access token...")
-        async with self.session.post(url, json=payload) as resp:
-            res_data = await resp.json()
-            if res_data.get("success"):
-                self._token = res_data.get("access_token")
-                self._token_expires_at = now + 86400
-                _LOGGER.debug("Solarman token acquired successfully.")
-                return self._token
-            else:
-                _LOGGER.error("Failed to acquire Solarman token: %s", res_data)
-                raise HiconicsAuthError(f"Auth error: {res_data.get('msg')}")
+        try:
+            async with self.session.post(url, json=payload) as resp:
+                if resp.status in (401, 403):
+                    raise HiconicsAuthError("Invalid credentials")
+                resp.raise_for_status()
+                res_data = await resp.json()
+                if res_data.get("success"):
+                    self._token = res_data.get("access_token")
+                    self._token_expires_at = now + 86400
+                    _LOGGER.debug("Solarman token acquired successfully.")
+                    return self._token
+                else:
+                    _LOGGER.error("Failed to acquire Solarman token: %s", res_data)
+                    raise HiconicsAuthError(f"Auth error: {res_data.get('msg')}")
+        except Exception as err:
+            if not isinstance(err, HiconicsAuthError):
+                raise HiconicsConnectionError(f"Connection failed: {err}") from err
+            raise
 
     async def async_get_current_data(self):
         """Fetch live telemetry data."""
@@ -92,13 +103,21 @@ class SolarmanAPIClient:
             "deviceId": int(self.device_id) if str(self.device_id).isdigit() else self.device_id,
         }
 
-        async with self.session.post(URL_DEVICE, headers=headers, json=payload) as resp:
-            res_data = await resp.json()
-            if res_data.get("success"):
-                return res_data
-            else:
-                _LOGGER.error("Error fetching telemetry: %s", res_data)
-                return None
+        try:
+            async with self.session.post(URL_DEVICE, headers=headers, json=payload) as resp:
+                if resp.status in (401, 403):
+                    raise HiconicsAuthError("Unauthorized or expired token")
+                resp.raise_for_status()
+                res_data = await resp.json()
+                if res_data.get("success"):
+                    return res_data
+                else:
+                    _LOGGER.error("Error fetching telemetry: %s", res_data)
+                    return None
+        except Exception as err:
+            if not isinstance(err, HiconicsAuthError):
+                raise HiconicsConnectionError(f"Error fetching data: {err}") from err
+            raise
 
     async def async_get_device_data(self):
         """Alias method for coordinator compatibility."""
@@ -109,26 +128,23 @@ class SolarmanAPIClient:
         token = await self.async_get_token()
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Dynamically build the command URL based on user's region
         command_url = f"https://{self.api_domain}/order-s/order/action/control/send"
-
         extend_web_str = json.dumps({"inputParam": input_param or {}})
 
         payload = {
-            "product": self.product_code,      # Dynamic product code
+            "product": self.product_code,
             "deviceSn": self.device_sn,
             "deviceId": str(self.device_id),
             "code": code,
-            "codeGroup": self.code_group,      # Dynamic code group
+            "codeGroup": self.code_group,
             "operationType": operation_type,
             "extendWeb": extend_web_str,
-            "orderTimeout": timeout
+            "orderTimeout": timeout,
         }
 
         _LOGGER.info("Sending PRO command %s...", code)
         async with self.session.post(command_url, headers=headers, json=payload) as resp:
             res_data = await resp.json()
-
             order_id = res_data.get("id")
             if not order_id:
                 _LOGGER.error("PRO API Command failed or no ID returned: %s", res_data)
@@ -139,7 +155,6 @@ class SolarmanAPIClient:
 
     async def _async_poll_order_status(self, token: str, order_id: str, timeout: int):
         """Poll PRO order ID using a GET request."""
-        # Dynamically build the poll URL
         poll_url = f"https://{self.api_domain}/order-s/order/action/{order_id}"
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -149,14 +164,12 @@ class SolarmanAPIClient:
         while time.time() - start_time < timeout:
             async with self.session.get(poll_url, headers=headers) as resp:
                 res = await resp.json()
-
                 if res.get("analysisResult"):
                     _LOGGER.info("Order %s executed successfully.", order_id)
                     return res
                 elif str(res.get("success")) == "0":
                     _LOGGER.error("Order %s failed: %s", order_id, res)
                     raise Exception(f"Order failed: {res}")
-
             await asyncio.sleep(5)
 
         raise Exception(f"Order polling timed out after {timeout} seconds.")
