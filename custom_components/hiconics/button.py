@@ -1,7 +1,7 @@
 """Button platform for Hiconics integration."""
 
-import logging
 import asyncio
+import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
@@ -28,7 +28,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class HiconicsPullTouButton(CoordinatorEntity, ButtonEntity):
-    """Button to pull TOU settings from the inverter."""
+    """Button to pull TOU settings from the inverter with busy-state disabling."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:cloud-download"
@@ -39,6 +39,7 @@ class HiconicsPullTouButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
+        self._is_busy = False
         self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_pull_tou"
 
     @property
@@ -50,15 +51,27 @@ class HiconicsPullTouButton(CoordinatorEntity, ButtonEntity):
             "name": "Hiconics Inverter",
         }
 
+    @property
+    def available(self) -> bool:
+        if self._is_busy:
+            return False
+        return super().available
+
     async def async_press(self) -> None:
-        """Read TOU settings from API."""
-        await self.hass.services.async_call(
-            DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "tou"}
-        )
+        """Read TOU settings from API while locking the button."""
+        self._is_busy = True
+        self.async_write_ha_state()
+        try:
+            await self.hass.services.async_call(
+                DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "tou"}
+            )
+        finally:
+            self._is_busy = False
+            self.async_write_ha_state()
 
 
 class HiconicsPullInverterModeButton(CoordinatorEntity, ButtonEntity):
-    """Button to pull Inverter Mode settings from the inverter."""
+    """Button to pull Inverter Mode settings from the inverter with busy-state disabling."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:cloud-download"
@@ -69,6 +82,7 @@ class HiconicsPullInverterModeButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
+        self._is_busy = False
         self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_pull_mode"
 
     @property
@@ -80,15 +94,27 @@ class HiconicsPullInverterModeButton(CoordinatorEntity, ButtonEntity):
             "name": "Hiconics Inverter",
         }
 
+    @property
+    def available(self) -> bool:
+        if self._is_busy:
+            return False
+        return super().available
+
     async def async_press(self) -> None:
-        """Read Inverter Mode settings from API."""
-        await self.hass.services.async_call(
-            DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "mode"}
-        )
+        """Read Inverter Mode settings from API while locking the button."""
+        self._is_busy = True
+        self.async_write_ha_state()
+        try:
+            await self.hass.services.async_call(
+                DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "mode"}
+            )
+        finally:
+            self._is_busy = False
+            self.async_write_ha_state()
 
 
 class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
-    """Button to pull Battery settings from the inverter."""
+    """Button to pull Battery settings from the inverter with busy-state disabling."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:cloud-download"
@@ -99,6 +125,7 @@ class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.api = api
         self.entry = entry
+        self._is_busy = False
         self._attr_unique_id = f"hiconics_{entry.entry_id}_btn_pull_battery"
 
     @property
@@ -110,11 +137,23 @@ class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
             "name": "Hiconics Inverter",
         }
 
+    @property
+    def available(self) -> bool:
+        if self._is_busy:
+            return False
+        return super().available
+
     async def async_press(self) -> None:
-        """Read Battery settings from API."""
-        await self.hass.services.async_call(
-            DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "battery"}
-        )
+        """Read Battery settings from API while locking the button."""
+        self._is_busy = True
+        self.async_write_ha_state()
+        try:
+            await self.hass.services.async_call(
+                DOMAIN, "read_settings", {"entry_id": self.entry.entry_id, "type": "battery"}
+            )
+        finally:
+            self._is_busy = False
+            self.async_write_ha_state()
 
 
 class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
@@ -143,7 +182,6 @@ class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
 
     @property
     def available(self) -> bool:
-        """Return False to grey out/disable the button while an API action is in progress."""
         if self._is_busy:
             return False
         return super().available
@@ -185,6 +223,5 @@ class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
                 raise HomeAssistantError("Inverter is busy processing another command. Please wait 10 seconds and try again.")
             raise
         finally:
-            # Always re-enable the button once finished or failed
             self._is_busy = False
             self.async_write_ha_state()
