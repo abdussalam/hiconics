@@ -57,7 +57,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
-    """Interactive number control for TOU Amps and SOC limits."""
+    """Interactive number control for TOU Amps and SOC limits (local staging)."""
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
@@ -100,16 +100,14 @@ class HiconicsTouNumber(CoordinatorEntity, NumberEntity):
         base_reg = 40 + ((self._slot - 1) * 6)
         required_keys = [f"C{base_reg + i}" for i in range(6)]
         
-        if not all(k in self.coordinator.extra_data for k in required_keys):
-            raise HomeAssistantError("Cannot write to inverter: TOU register block has not been read yet.")
+        if not self.coordinator.extra_data or not all(k in self.coordinator.extra_data for k in required_keys):
+            raise HomeAssistantError("Cannot stage value: TOU register block has not been read yet. Please click 'Pull TOU Settings' first.")
 
         val_str = f"{value:.1f}" if self._attr_native_step < 1.0 else str(int(value))
-        current_map = {k: str(self.coordinator.extra_data[k]) for k in required_keys}
-        current_map[self._reg_key] = val_str
-
-        params = {k: {"v": v} for k, v in current_map.items()}
-        await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-        self.coordinator.update_extra_data(current_map)
+        
+        # Stage change locally
+        self.coordinator.extra_data[self._reg_key] = val_str
+        self.async_write_ha_state()
 
 
 class HiconicsBatteryNumber(CoordinatorEntity, NumberEntity):
