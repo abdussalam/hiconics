@@ -186,11 +186,12 @@ class HiconicsTouModeSelect(CoordinatorEntity, SelectEntity):
         base_reg = 40 + ((self._slot - 1) * 6)
         required_keys = [f"C{base_reg + i}" for i in range(6)]
         
-        if not all(k in self.coordinator.extra_data for k in required_keys):
-            raise HomeAssistantError("Cannot stage value: TOU register block has not been read yet.")
+        # STRICT COMPLIANCE: Refuse staging if the slot block has not been read yet.
+        if not self.coordinator.extra_data or not all(k in self.coordinator.extra_data for k in required_keys):
+            raise HomeAssistantError("Cannot stage value: TOU register block has not been read yet. Please click 'Pull TOU Settings' first.")
 
         num_val = TOU_MODE_MAP_TO_NUM.get(option, option.split("-")[0].strip())
 
-        # Stage change locally without triggering immediate network calls
+        # Stage change locally in coordinator extra_data without triggering immediate network calls
         self.coordinator.extra_data[self._reg_key] = str(num_val)
         self.async_write_ha_state()
