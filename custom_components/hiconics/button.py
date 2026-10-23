@@ -118,7 +118,7 @@ class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
 
 
 class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
-    """Button to push all staged TOU slots to the inverter using strict cache validation (no fallbacks)."""
+    """Button to push all staged TOU slots to the inverter in a single atomic batch call."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:cloud-upload"
@@ -141,39 +141,37 @@ class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
         }
 
     async def async_press(self) -> None:
-        """Iterate through all 6 slots and push each slot block via set_tou_slot service after strict validation."""
-        for slot in range(1, 7):
-            base_reg = 40 + ((slot - 1) * 6)
-            required_keys = [f"C{base_reg + i}" for i in range(6)]
+        """Collect all 36 TOU registers across all 6 slots and push them in one single s_A8 command."""
+        params = {}
 
-            # STRICT COMPLIANCE: Refuse write if any register in the block has not been read yet.
-            if not self.coordinator.extra_data or not all(k in self.coordinator.extra_data for k in required_keys):
-                raise HomeAssistantError(
-                    f"Cannot apply settings: Slot {slot} register block has not been read yet. Please click 'Pull TOU Settings' first."
-                )
+        for reg in range(40, 76):
+            key = f"C{reg}"
+            val = self.coordinator.extra_data.get(key)
+            
+            if val is None or str(val).strip() == "" or str(val).lower() == "none":
+                raise HomeAssistantError(f"Cannot apply settings: Register {key} is empty or unread. Please click 'Pull TOU Settings' first.")
 
-            def get_clean_reg(offset: int) -> str:
-                key = f"C{base_reg + offset}"
-                val = self.coordinator.extra_data.get(key)
-                if val is None or str(val).strip() == "" or str(val).lower() == "none":
-                    raise HomeAssistantError(f"Cannot apply settings: Register {key} is empty or unread.")
-                val_str = str(val).replace(":", "").strip()
-                if "-" in val_str:
-                    val_str = val_str.split("-")[0].strip()
-                if val_str.replace(".", "", 1).isdigit():
-                    val_str = str(int(float(val_str)))
-                return val_str
+            val_str = str(val).replace(":", "").strip()
+            if "-" in val_str:
+                val_str = val_str.split("-")[0].strip()
+            if val_str.replace(".", "", 1).isdigit():
+                val_str = str(int(float(val_str)))
 
-            payload = {
-                "entry_id": self.entry.entry_id,
-                "slot": slot,
-                "start_time": get_clean_reg(0).zfill(4),
-                "end_time": get_clean_reg(1).zfill(4),
-                "mode": get_clean_reg(2),
-                "max_amps": get_clean_reg(3),
-                "max_soc": get_clean_reg(4),
-                "min_soc": get_clean_reg(5),
-            }
+            # Zero-pad start and end times (offsets 0 and 1 in each 6-register block)
+            slot_offset = (reg - 40) % 6
+            if slot_offset in (0, 1):
+                val_str = val_str.zfill(4)
 
-            await self.hass.services.async_call(DOMAIN, "set_tou_slot", payload)
-            await asyncio.sleep(2)
+            params[key] = {"v": val_str}
+
+        _LOGGER.debug("Sending all TOU slots in single s_A8 batch payload: %s", params)
+        
+        try:
+            await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
+        except Exception as err:
+            if "OR_THERE_ARE_ORDER_BEING_SENT" in str(err):
+                raise HomeAssistantError("Inverter is busy processing another command. Please wait 10 seconds and try again.")
+            raise
+
+        # Update local cache with successfully applied values
+        self.coordinator.update_extra_data({k: v["v"] for k, v in params.items()}, is_tou=True)
