@@ -1,13 +1,15 @@
-"""Time platform for Hiconics TOU slots."""
+"""Time platform for Hiconics TOU slots (local staging)."""
 
 import logging
 from datetime import time
 from homeassistant.components.time import TimeEntity
 from homeassistant.const import EntityCategory
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Hiconics time entities."""
@@ -19,6 +21,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.append(HiconicsTOUTime(coordinator, entry, slot, is_start=False))
         
     async_add_entities(entities)
+
 
 class HiconicsTOUTime(CoordinatorEntity, TimeEntity):
     """Native time picker for TOU Start and End Times."""
@@ -56,42 +59,26 @@ class HiconicsTOUTime(CoordinatorEntity, TimeEntity):
         """Return the current time from the coordinator as a datetime.time object."""
         extra_data = getattr(self.coordinator, "extra_data", {})
         raw_time = extra_data.get(self._reg)
-        if raw_time and str(raw_time) != "None":
-            val = str(raw_time).zfill(4)
-            if len(val) == 4:
-                try:
-                    return time(hour=int(val[:2]), minute=int(val[2:]))
-                except ValueError:
-                    pass
-        return time(hour=0, minute=0)
+        if raw_time is None or str(raw_time) == "None":
+            return None
+        val = str(raw_time).replace(":", "").strip().zfill(4)
+        if len(val) == 4 and val.isdigit():
+            try:
+                return time(hour=int(val[:2]), minute=int(val[2:]))
+            except ValueError:
+                return None
+        return None
 
     async def async_set_value(self, value: time) -> None:
-        """Handle the time being changed in the UI."""
-        extra = getattr(self.coordinator, "extra_data", {})
+        """Stage the time locally without dispatching an API call."""
         base_reg = 40 + ((self._slot - 1) * 6)
+        required_keys = [f"C{base_reg + i}" for i in range(6)]
 
-        def get_val(offset, default): 
-            return extra.get(f"C{base_reg + offset}", default)
+        if not self.coordinator.extra_data or not all(k in self.coordinator.extra_data for k in required_keys):
+            raise HomeAssistantError("Cannot stage value: TOU register block has not been read yet. Please click 'Pull TOU Settings' first.")
 
-        # Format the chosen time back to Solarman's 'HHMM' string
         time_str = f"{value.hour:02d}{value.minute:02d}"
-        
-        start = time_str if self._is_start else str(get_val(0, "0000")).zfill(4)
-        end = time_str if not self._is_start else str(get_val(1, "0000")).zfill(4)
-        
-        payload = {
-            "slot": self._slot,
-            "start_time": start,
-            "end_time": end,
-            "mode": int(get_val(2, 0)),
-            "max_amps": float(get_val(3, 25)),
-            "max_soc": float(get_val(4, 100)),
-            "min_soc": float(get_val(5, 18))
-        }
 
-        # Fire off the update to the inverter
-        await self.hass.services.async_call(DOMAIN, "set_tou_slot", payload)
-        
-        # Update the UI immediately without waiting for next poll
+        # Stage change locally
         self.coordinator.extra_data[self._reg] = time_str
         self.async_write_ha_state()
