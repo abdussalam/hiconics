@@ -117,7 +117,7 @@ class HiconicsPullBatteryButton(CoordinatorEntity, ButtonEntity):
 
 
 class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
-    """Button to push all staged TOU slot changes together as a single unit to the inverter."""
+    """Button to push all staged TOU slots to the inverter using strict cache validation (no fallbacks)."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:cloud-upload"
@@ -140,32 +140,39 @@ class HiconicsApplyAllTouButton(CoordinatorEntity, ButtonEntity):
         }
 
     async def async_press(self) -> None:
-        """Collect all 6 slots (C40 to C75) from local staged state and push them all in one call."""
-        # Ensure all 36 TOU registers (Slots 1-6) are present in extra_data
-        all_tou_keys = [f"C{reg}" for reg in range(40, 76)]
-        if not all(k in self.coordinator.extra_data for k in all_tou_keys):
-            raise HomeAssistantError("Cannot apply settings: Not all TOU registers have been read yet. Please click 'Pull TOU Settings' first.")
+        """Iterate through all 6 slots and push each slot block via set_tou_slot service after strict validation."""
+        for slot in range(1, 7):
+            base_reg = 40 + ((slot - 1) * 6)
+            required_keys = [f"C{base_reg + i}" for i in range(6)]
 
-        # Build the full combined parameter dictionary for all 6 slots
-        params = {}
-        for reg in range(40, 76):
-            key = f"C{reg}"
-            val = str(self.coordinator.extra_data.get(key, "0"))
-            # Clean and format each value properly
-            val_str = val.replace(":", "").strip()
-            if "-" in val_str:
-                val_str = val_str.split("-")[0].strip()
-            if val_str.replace(".", "", 1).isdigit():
-                val_str = str(int(float(val_str)))
-            params[key] = {"v": val_str.zfill(4) if reg % 6 in (0, 1) else val_str}
+            # STRICT COMPLIANCE: Refuse write if any register in the block has not been read yet.
+            if not self.coordinator.extra_data or not all(k in self.coordinator.extra_data for k in required_keys):
+                raise HomeAssistantError(
+                    f"Cannot apply settings: Slot {slot} register block has not been read yet. Please click 'Pull TOU Settings' first."
+                )
 
-        _LOGGER.debug("Sending all TOU slots s_A8 payload: %s", params)
-        try:
-            await self.api.async_send_command(code="s_A8", operation_type=5, input_param=params)
-        except Exception as err:
-            if "OR_THERE_ARE_ORDER_BEING_SENT" in str(err):
-                raise HomeAssistantError("Inverter is busy processing another command. Please try again in 10 seconds.")
-            raise
+            def get_clean_reg(offset: int) -> str:
+                key = f"C{base_reg + offset}"
+                val = self.coordinator.extra_data.get(key)
+                if val is None or str(val).strip() == "" or str(val).lower() == "none":
+                    raise HomeAssistantError(f"Cannot apply settings: Register {key} is empty or unread.")
+                val_str = str(val).replace(":", "").strip()
+                if "-" in val_str:
+                    val_str = val_str.split("-")[0].strip()
+                if val_str.replace(".", "", 1).isdigit():
+                    val_str = str(int(float(val_str)))
+                return val_str
 
-        # Update coordinator state with the successfully applied values
-        self.coordinator.update_extra_data({k: v["v"] for k, v in params.items()}, is_tou=True)
+            payload = {
+                "entry_id": self.entry.entry_id,
+                "slot": slot,
+                "start_time": get_clean_reg(0).zfill(4),
+                "end_time": get_clean_reg(1).zfill(4),
+                "mode": get_clean_reg(2),
+                "max_amps": get_clean_reg(3),
+                "max_soc": get_clean_reg(4),
+                "min_soc": get_clean_reg(5),
+            }
+
+            await self.hass.services.async_call(DOMAIN, "set_tou_slot", payload)
+            await asyncio.sleep(2)
