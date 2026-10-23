@@ -1,6 +1,7 @@
 """Button platform for Hiconics integration."""
 
 import logging
+import asyncio
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
